@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+
+<!-- generated on Wed Nov 30 12:18:34 2011 by SUMO polyconvert Version 0.13.1
+<?xml version="1.0" encoding="iso-8859-1"?>
+
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.sf.net/xsd/polyconvertConfiguration.xsd">
+
+    <input>
+        <osm-files value="erlangen.osm"/>
+        <osm.keep-full-type value="false"/>
+        <type-file value="erlangen.polytypes.xml"/>
+    </input>
+
+    <output>
+        <output-file value="erlangen.poly.xml"/>
+    </output>
+
+    <projection>
+        <proj.utm value="true"/>
+    </projection>
+
+</configuration>
+-->
+
+<additional>
+ 	<rerouter id="rerouter_0" edges="edge1">	
+		<interval end="1e3">
+		   <destProbReroute id="edge2"/>
+		</interval>
+	</rerouter>
+    <rerouter id="rerouter_1" edges="edge2">
+		<interval end="1e3">
+		   <destProbReroute id="edge1"/>
+		</interval>
+	</rerouter>
+    <poly id="112552150" type="building" color="1.00,0.00,0.00" fill="1" layer="4" shape="646449.74,5493167.41 646463.56,5493152.97 646486.15,5493174.48 646472.33,5493188.91 646449.74,5493167.41"/>
+    <poly id="116904831" type="building" color="1.00,0.00,0.00" fill="1" layer="4" shape="646777.33,5493200.07 646749.03,5493228.32 646745.37,5493231.91 646720.44,5493206.53 646755.79,5493172.00 646780.41,5493197.08 646777.33,5493200.07"/>
+    <poly id="133641469" type="building" color="1.00,0.00,0.00" fill="1" layer="4" shape="646791.75,5493244.67 646789.96,5493241.40 646787.08,5493239.09 646782.48,5493238.06 646779.09,5493238.79 646776.04,5493240.89 646773.94,5493244.21 646773.38,5493247.77 646773.96,5493250.67 646776.29,5493254.19 646779.64,5493256.24 646783.01,5493256.77 646786.97,5493255.79 646790.26,5493253.06 646792.04,5493248.85 646791.75,5493244.67"/>
+    <poly id="133641470" type="building" color="1.00,0.00,0.00" fill="1" layer="4" shape="646811.66,5493235.04 646814.67,5493232.10 646843.56,5493261.52 646807.61,5493296.61 646779.02,5493267.49 646783.34,5493263.27 646811.66,5493235.04"/>
+    <poly id="133641471" type="building" color="1.00,0.00,0.00" fill="1" layer="4" shape="646777.33,5493200.07 646796.66,5493219.76 646811.66,5493235.04 646783.34,5493263.27 646767.26,5493246.89 646762.93,5493251.11 646751.49,5493239.46 646755.82,5493235.24 646749.03,5493228.32 646777.33,5493200.07"/>
+    <poi id="485664159" type="unknown" color="0.20,0.50,1.00" layer="-1" x="646537.55" y="5493204.17"/>
+    <poi id="485664178" type="unknown" color="0.20,0.50,1.00" layer="-1" x="646721.33" y="5493266.23"/>
+    <poi id="917373051" type="unknown" color="0.20,0.50,1.00" layer="-1" x="645568.57" y="5494112.14"/>
+    <poi id="917373069" type="unknown" color="0.20,0.50,1.00" layer="-1" x="645588.43" y="5494109.19"/>
+</additional>

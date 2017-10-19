@@ -1,0 +1,115 @@
+version 2
+run WithoutChannelSwitching-0-20171018-16:51:21-6977
+attr configname WithoutChannelSwitching
+attr datetime 20171018-16:51:21
+attr experiment WithoutChannelSwitching
+attr inifile omnetpp.ini
+attr iterationvars ""
+attr iterationvarsf ""
+attr measurement ""
+attr network Circles_Scenario
+attr processid 6977
+attr repetition 0
+attr replication #0
+attr resultdir results
+attr runnumber 0
+attr seedset 0
+param **.coreDebug false
+param **.debug false
+param *.**.nic.mac1609_4.bitrate 6Mbps
+param *.**.nic.mac1609_4.txPower 20mW
+param *.**.nic.mac1609_4.useServiceChannel false
+param *.**.nic.phy80211p.analogueModels "xmldoc(\"config.xml\")"
+param *.**.nic.phy80211p.antenna "xmldoc(\"antenna.xml\", \"/root/Antenna[@id='monopole']\")"
+param *.**.nic.phy80211p.decider "xmldoc(\"config.xml\")"
+param *.**.nic.phy80211p.sensitivity -89dBm
+param *.**.nic.phy80211p.thermalNoise -110dBm
+param *.**.nic.phy80211p.usePropagationDelay true
+param *.**.nic.phy80211p.useThermalNoise true
+param *.annotations.draw true
+param *.connectionManager.drawMaxIntfDist false
+param *.connectionManager.maxInterfDist 2600m
+param *.connectionManager.sendDirect true
+param *.manager.autoShutdown true
+param *.manager.host "\"localhost\""
+param *.manager.launchConfig "xmldoc(\"circles.launchd.xml\")"
+param *.manager.port 9999
+param *.manager.updateInterval 1s
+param *.node[*0].veinsmobility.accidentCount 1
+param *.node[*0].veinsmobility.accidentDuration 50s
+param *.node[*0].veinsmobility.accidentStart 75s
+param *.node[*].appl.beaconInterval 1s
+param *.node[*].appl.dataOnSch false
+param *.node[*].appl.headerLength "80 bit"
+param *.node[*].appl.sendBeacons true
+param *.node[*].applType "\"MyVeinsApp\""
+param *.node[*].veinsmobility.x 0
+param *.node[*].veinsmobility.y 0
+param *.node[*].veinsmobility.z 1.895
+param *.node[*].veinsmobilityType.debug true
+param *.obstacles.debug false
+param *.obstacles.obstacles "xmldoc(\"config.xml\", \"//AnalogueModel[@type='SimpleObstacleShadowing']/obstacles\")"
+param *.playgroundSizeX 1000m
+param *.playgroundSizeY 1000m
+param *.playgroundSizeZ 50m
+param *.rsu[*].appl.beaconInterval 1s
+param *.rsu[*].appl.beaconUserPriority 7
+param *.rsu[*].appl.dataOnSch false
+param *.rsu[*].appl.dataUserPriority 5
+param *.rsu[*].appl.headerLength "80 bit"
+param *.rsu[*].appl.sendBeacons true
+param *.rsu[*].applType "\"TraCIDemoRSU11p\""
+param *.rsu[0].mobility.x 200
+param *.rsu[0].mobility.y 200
+param *.rsu[0].mobility.z 3
+
+vector 2  Circles_Scenario.node[0].veinsmobility  posx  ETV
+vector 3  Circles_Scenario.node[0].veinsmobility  posy  ETV
+vector 9  Circles_Scenario.node[1].veinsmobility  posx  ETV
+vector 10  Circles_Scenario.node[1].veinsmobility  posy  ETV
+vector 4  Circles_Scenario.node[0].veinsmobility  speed  ETV
+vector 11  Circles_Scenario.node[1].veinsmobility  speed  ETV
+vector 5  Circles_Scenario.node[0].veinsmobility  acceleration  ETV
+vector 6  Circles_Scenario.node[0].veinsmobility  co2emission  ETV
+vector 12  Circles_Scenario.node[1].veinsmobility  acceleration  ETV
+vector 13  Circles_Scenario.node[1].veinsmobility  co2emission  ETV
+6	168	3	3.7312019351249
+6	253	4	4.1143595053945
+6	338	5	6.1947307126458
+5	168	3	1.7190422802465
+5	253	4	1.5227277569124
+5	338	5	2.0576717144926
+4	87	2	3.912394673932
+4	168	3	5.6314369541785
+4	253	4	7.1541647110908
+4	338	5	9.2118364255835
+3	2	1	76.65
+3	87	2	76.65
+3	168	3	76.65
+3	253	4	76.65
+3	338	5	76.65
+2	2	1	31.301513108056
+2	87	2	31.301513108056
+2	168	3	34.650018465605
+2	253	4	39.430012496036
+2	338	5	45.925420586317
+13	168	3	3.6597920812763
+13	253	4	5.3971227830402
+13	338	5	5.8096780135308
+12	168	3	1.622337698855
+12	253	4	2.0520762982429
+12	338	5	1.7935297640623
+11	87	2	4.1425940009163
+11	168	3	5.7649316997713
+11	253	4	7.8170079980142
+11	338	5	9.6105377620764
+10	2	1	23.35
+10	87	2	23.35
+10	168	3	23.35
+10	253	4	23.35
+10	338	5	23.35
+9	2	1	68.609567480053
+9	87	2	68.609567480053
+9	168	3	65.157448018366
+9	253	4	60.274029074529
+9	338	5	53.299680714635
