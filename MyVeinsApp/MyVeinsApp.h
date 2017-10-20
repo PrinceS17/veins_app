@@ -40,6 +40,7 @@ using namespace std;
 
 // this is a type of node
 enum enum_type {PROCESSOR, REQUESTER};
+int max_num_neighbor = 50;              // follow AVE paper
 
 // struct of NAI entry
 typedef struct NAI
@@ -47,7 +48,7 @@ typedef struct NAI
     //int vehicleId;
     bool ifIdle;
     int hopNum;
-    simTime expiredTime;
+    simtime_t expiredTime;
 
 };
 
@@ -55,6 +56,7 @@ class NAI_table
 {
 public:
     map<int, NAI> NAI_map;          // map of vehicle ID and the value
+    vector<int> NAI_vector;         // vector of vehicle ID for search
     int length;
 
 public:
@@ -64,17 +66,58 @@ public:
     void push_back(int vehicleId, NAI entry)       // push bask the entry to the end of NAI table
     {
         NAI_map.insert(pair<int, NAI>(vehicleId, entry));
+        NAI_vector.push_back(vehicleId);
         length ++;
+    }
+
+    void push_back(int vehicleId, bool ifIdle, int hopNum, simTime expiredTime)
+    {
+        NAI entry = {ifIdle, hopNum, expiredTime};
+        this->push_back(vehicleId, entry);
+
     }
 
     bool erase(int vehicleId)
     {
         if(NAI_map.find(vehicleId) != NAI_map.end())        // ID exists in table
         {
-            NAI_map.erase(vehicleId);
+            NAI_map.erase(vehicleId);                       // suppose that must be the 1st entry to be removed because it's earliest
+            NAI_vector.pop_back();                          // otherwise we have to look through all entries
+            length --;
             return true;
         }
         else return false;
+    }
+
+    bool find(int vehicleId)
+    {
+        return (NAI_map.find(vehicleId) != NAI_map.end()? true:false);
+    }
+
+    vector<int> generate_hop1()
+    {
+        vector<int> hop1_neighbor;
+        for(int i = 0; i < length; i ++)
+        {
+            if(NAI_map[NAI_vector.at(i)].hopNum < 2)
+                hop1_neighbor.push_back(NAI_vector.at(i));
+        }
+        if(hop1_neighbor.size() <= max_num_neighbor)
+            return hop1_neighbor;
+        else
+        {
+            vector<int> temp(max_num_neighbor);
+            for(int i = 0; i < max_num_neighbor; i ++)
+            {
+                int ri = randint(0, hop1_neighbor.size() - 1 - i);                                 // get random max_num entries from hop1 vector
+                temp.push_back(hop1_neighbor.at(ri));
+                hop1_neighbor.erase(ri);
+            }
+
+            // temp.assign(hop1_neighbor.end() - max_num_neighbor + 1, hop1_neighbor.end());       // get last max_num entries, here not randomly
+            return temp;
+        }
+
     }
 
 }
@@ -89,11 +132,12 @@ class MyVeinsApp : public BaseWaveApplLayer {
         int currentSubscribedServiceId;
 
         // my own definitions
-        enum_type node_type;                     // the node is requester or processor
+        enum_type node_type;            // the node is requester or processor
         std::map<int,int> data_size;    // record the change of task sizes for both requester and processor
-        std::queue process_queue;           // imitate the processing queue
-        simTime current_task_time;
+        std::queue process_queue;       // imitate the processing queue
+        simtime_t current_task_time;
         double computing_speed;
+        bool idleState;                 // another name of ifIdle
         NAI_table naiTable;
 
     protected:

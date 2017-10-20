@@ -20,10 +20,17 @@
 
 #include <string>
 #include <vector>
+#include <boost/thread.hpp>
 #include "MyVeinsApp.h"
 #define SEND_DATA_EVT 2
+#define SEND_MY_BC_EVT 3
 
 Define_Module(MyVeinsApp);
+
+double speedLimit = 15;         // 15 m/s
+simtime_t my_bc_interval = 5;   // 5 s
+boost::mutex mtx;               // mtx for reading NAI table: single or multiple thread?
+
 
 void MyVeinsApp::send_beacon(int vehicleId, Coord speed, bool ifIdle, std::vector<int> hop1_Neighbor)         // send once, print all the information into one string of wsm data
 {
@@ -37,7 +44,12 @@ void MyVeinsApp::send_beacon(int vehicleId, Coord speed, bool ifIdle, std::vecto
     WaveShortMessage * bc = WaveShortMessage();
     populateWSM(bc);
     bc->setWsmData(str.c_str());
-    scheduleAt(simTime(), bc);
+    scheduleAt(simTime(), bc->dup());
+
+    break;
+    // schecule next beacon
+    bc->setKind(SEND_MY_BC_EVT);
+    scheduleAt(simTime() + my_bc_interval, bc);
 
 }
 
@@ -60,10 +72,12 @@ void MyVeinsApp::send_data(int size, int rcvId, int serial, simTime time)       
 
         WaveShortMessage * data = WaveShortMessage();
         populateWSM(data, rcvId, serial);
-        data->setKind(SEND_DATA_EVT);        // cooperate with handleSelfMsg
+        data->setKind(SEND_DATA_EVT);           // cooperate with handleSelfMsg
         data->setWsmLength(l);
         data->setWsmData(str.c_str());
-        scheduleAt(time + slot, data);   // send each wsm in every slot, also could be other method
+        scheduleAt(time + slot, data);          // send each wsm in every slot, also could be other method
+        if(current_task_time <= simTime())      // if processor becomes idle after sending data
+            idleState = true;
 
     }
 
@@ -78,13 +92,17 @@ void MyVeinsApp::initialize(int stage) {
         lastDroveAt = simTime();
         currentSubscribedServiceId = -1;
         node_type = rand() < 0.5*RAND_MAX;              // can be initialized by the position or other properties of nodes
+        current_task_time = 0;
         computing_speed = 1e3;
+        idleState = true;
+        naiTable.push_back(myId, idleState, 0, simTime() + my_bc_interval);
 
     }
     else if (stage == 1) {
         //Initializing members that require initialized other modules goes here
-        send_beacon(myid, curSpeed, true, NULL);          // cannot get myid? need some other operation?
-
+        vector<int> initialId(1,myId);
+        if(node_type == PROCESSOR)
+            send_beacon(myid, curSpeed, idleState, initialId);          // cannot get myid? need some other operation?
     }
 }
 
@@ -124,7 +142,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
             wsm->setSerial(3);
             scheduleAt(simTime() + 2 + uniform(0.01,0.2), wsm->dup());
         }
-
+        break;
 
     case 'B':   // AVE beacon
         if(node_type == PROCESSOR) break;           // only requesters care about AVE beacon
@@ -136,22 +154,49 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         double vy = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
         double vz = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
         bool ifIdle = str.substr(0, sizeof(bool)).c_str(); str = str.substr(sizeof(bool));
+        simtime_t expiredTime = simTime() + my_bc_interval;
 
-        // decode the neighbor ID
+        // compare the speed
+        Coord sourceSpeed(vx,vy,vz);
+        double speedDist = curSpeed.distance(sourceSpeed);
+        if(speedDist > speedLimit)
+        {
+            delete(wsm);
+            break;
+        }
+        // decode the neighbor ID and update the NAI table
+        int hop1_num = (wsm->getWsmLength() - 30) / sizeof(int);            // 30 is length before neighbor part, should be varified
+        vector<int> hop1_neighbor;
 
+        for(int i = 0; i < hop1_num; i ++)
+        {
+            int neighborId = str.substr(0, sizeof(int)).c_str();
+            str = str.substr(sizeof(int));
 
+            // mtx.lock();
+            int hopNum;
+            if(!naiTable.find(neighborId))                      // if it's a new entry: create
+            {
+                if(neighborId == vehicleId)                     // if this entry is the source
+                    hopNum = 1;
+                else
+                    hopNum = 2;
+                naiTable.push_back(vehicleId, ifIdle, hopNum, expiredTime);
+            }
+            else if(neighborId == vehicleId)                    // if the source entry is already in the table: update
+            {
+                if(naiTable.NAI_map[vehicleId].hopNum == 2 )
+                {
+                    naiTable.NAI_map[vehicleId].hopNum = 1;
+                    naiTable.NAI_map[vehicleId].expiredTime = expiredTime;
+                }
+                else naiTable.NAI_map[vehicleId].expiredTime = expiredTime;
+            }
+            else ;                                              // if other entry is in the table: no change
+            // mtx.unlock();
 
-
-        // update the NAI table
-
-
-
-
-
-
-
-        ;
-
+        }
+        break;
 
     case 'D':   // data
         if(node_type == PROCESSOR)
@@ -168,7 +213,13 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
                 // add the size information to processing queueing which is running all the time
                 int this_size = data_size.at(wsm->getSenderAddress());
                 process_queue.push_back(this_size);                                                                    // push the data into processor queue, maybe not useful now
-                current_task_time = std::max(simTime(), current_task_time) + (double)this_size/computing_speed;        // this setting considers the delay of processing
+                if(current_task_time > simTime())
+                    current_task_time += (double)this_size/computing_speed;
+                else
+                {
+                    idleState = false;
+                    current_task_time = simTime() + (double)this_size/computing_speed;
+                }
 
                 send_data(this_size, wsm->getSenderAddress(), 3, current_task_time);                                   // serial = 3 for now
                 data_size.erase(wsm->getSenderAddress());                                                              // delete the sender's record at once to receive next data from the same sender!
@@ -190,8 +241,6 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 
             }
         }
-
-
     }
 }
 
@@ -199,7 +248,8 @@ void MyVeinsApp::onWSA(WaveServiceAdvertisment* wsa) {
     //Your application has received a service advertisement from another car or RSU
     //code for handling the message goes here, see TraciDemo11p.cc for examples
 
-    // example in TraCIDemo means th at change channel according to wsa and not use more information
+    // example in TraCIDemo means th at change ch
+    break;annel according to wsa and not use more information
     if (currentSubscribedServiceId == -1) {
         mac->changeServiceChannel(wsa->getTargetChannel());
         currentSubscribedServiceId = wsa->getPsid();
@@ -215,27 +265,19 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
     //this method is for self messages (mostly timers)
     //it is important to call the BaseWaveApplLayer function for BSM and WSM transmission  // BSM and WSA?
 
-    // AVE beacon
-//    if(msg->getKind() == SEND_WSA_EVT){
-//       WaveServiceAdvertisment* wsa = new WaveServiceAdvertisment();
-//       populateWSM(wsa);
-//       sendDown(wsa);
-//       cMessage *bc_msg = new cMessage("new beacon evt", 1);
-//       scheduleAt(simTime() + 2, bc_msg);
-//       EV<<"Sending beacon periodically!\n\n\n\n\n";
-//   }
-
-
-
-    if (WaveShortMessage* wsm = dynamic_cast<WaveShortMessage*>(msg)) {         // if the pointer exists or not?
-        if(msg->getKind() == SEND_DATA_EVT)                                     // send data continuously
-        {
+    if (WaveShortMessage* wsm = dynamic_cast<WaveShortMessage*>(msg)) {         // if the pointer exists or not? I think most wsm case is this one?
+        switch(msg->getKind()) {
+        case SEND_DATA_EVT:
             //not send the wsm for several times like traffic update
             sendDown(wsm->dup());                 // should consider resend or not?
             delete(wsm);
-        }
-        else
-        {
+            break;
+
+        case SEND_MY_BC_EVT:
+            send_beacon(myId, curSpeed, idleState, naiTable.generate_hop1());
+            break;
+
+        default:
            //send this message on the service channel until the counter is 3 or higher.
            //this code only runs when channel switching is enabled                  // what's it?
            sendDown(wsm->dup());
@@ -250,8 +292,6 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
            }
        }
    }
-
-
    else {
        BaseWaveApplLayer::handleSelfMsg(msg);
    }
