@@ -102,7 +102,7 @@ void MyVeinsApp::initialize(int stage) {
         //Initializing members that require initialized other modules goes here
         vector<int> initialId(1,myId);
         if(node_type == PROCESSOR)
-            send_beacon(myid, curSpeed, idleState, initialId);          // cannot get myid? need some other operation?
+            this->send_beacon(myid, curSpeed, idleState, initialId);          // cannot get myid? need some other operation?
     }
 }
 
@@ -221,7 +221,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
                     current_task_time = simTime() + (double)this_size/computing_speed;
                 }
 
-                send_data(this_size, wsm->getSenderAddress(), 3, current_task_time);                                   // serial = 3 for now
+                this->send_data(this_size, wsm->getSenderAddress(), 3, current_task_time);                                   // serial = 3 for now
                 data_size.erase(wsm->getSenderAddress());                                                              // delete the sender's record at once to receive next data from the same sender!
 
             }
@@ -274,7 +274,7 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
             break;
 
         case SEND_MY_BC_EVT:
-            send_beacon(myId, curSpeed, idleState, naiTable.generate_hop1());
+            this->send_beacon(myId, curSpeed, idleState, naiTable.generate_hop1());
             break;
 
         default:

@@ -147,6 +147,11 @@ class MyVeinsApp : public BaseWaveApplLayer {
 
         virtual void handleSelfMsg(cMessage* msg);
         virtual void handlePositionUpdate(cObject* obj);
+
+        // my own function
+        virtual void send_beacon(int vehicleId, Coord speed, bool ifIdle, std::vector<int> hop1_Neighbor);
+        virtual void send_data(int size, int rcvId, int serial, simTime time);
+
     };
 
 #endif
