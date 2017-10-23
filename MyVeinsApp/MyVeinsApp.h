@@ -41,6 +41,17 @@ using namespace std;
 // this is a type of node
 enum enum_type {PROCESSOR, REQUESTER};
 int max_num_neighbor = 50;              // follow AVE paper
+double phi = 0.8;                       // for NAI calculation
+
+typedef struct job
+{
+    int data_size;          // TX data
+    int result_size;        // after processing
+    double workload;        // for processing time calculation
+    double utility;
+    map<int, double> bid;   // map: processor and its bid
+
+};
 
 // struct of NAI entry
 typedef struct NAI
@@ -58,6 +69,7 @@ public:
     map<int, NAI> NAI_map;          // map of vehicle ID and the value
     vector<int> NAI_vector;         // vector of vehicle ID for search
     int length;
+    double value;
 
 public:
     NAI_table() {length = 0;}
@@ -120,7 +132,29 @@ public:
 
     }
 
-}
+    double calculate_NAI()      // O(n)
+    {
+        double NAI_value = 0;
+        for(int i = 0; i < length; i ++)
+        {
+            if(NAI_map[NAI_vector.at(i)].hopNum == 1)
+                NAI_value += phi;
+            else if(NAI_map[NAI_vector.at(i)].hopNum == 2)
+                NAI_value += phi * phi;
+            else ;
+
+        }
+        return NAI_value;
+    }
+
+    void update()           // delete expire entries and calculate NAI value
+    {
+
+
+
+    }
+
+};
 
 class MyVeinsApp : public BaseWaveApplLayer {
     public:
@@ -134,9 +168,10 @@ class MyVeinsApp : public BaseWaveApplLayer {
         // my own definitions
         enum_type node_type;            // the node is requester or processor
         std::map<int,int> data_size;    // record the change of task sizes for both requester and processor
-        std::queue process_queue;       // imitate the processing queue
+        std::queue<job> job_queue;      // imitate the processing queue
+        std::vector<job> job_vector;    // store necessary information of jobs to be sent
         simtime_t current_task_time;
-        double computing_speed;
+        double computing_speed;         // unified, U(1,2) for workload
         bool idleState;                 // another name of ifIdle
         NAI_table naiTable;
 
@@ -149,7 +184,10 @@ class MyVeinsApp : public BaseWaveApplLayer {
         virtual void handlePositionUpdate(cObject* obj);
 
         // my own function
-        virtual void send_beacon(int vehicleId, Coord speed, bool ifIdle, std::vector<int> hop1_Neighbor);
+        virtual void send_EREP(int vehicleId, int rcvId, string str);
+        virtual void send_EREQ(std::queue job_queue, double job_time);
+        virtual void generate_job(double lambda, int data_size, int result_size, double workload);
+        virtual void send_beacon(std::vector<int> hop1_Neighbor);
         virtual void send_data(int size, int rcvId, int serial, simTime time);
 
     };

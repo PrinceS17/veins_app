@@ -20,23 +20,111 @@
 
 #include <string>
 #include <vector>
+#include <random>
 #include <boost/thread.hpp>
 #include "MyVeinsApp.h"
 #define SEND_DATA_EVT 2
 #define SEND_MY_BC_EVT 3
+#define GENERATE_JOB_EVT 4
 
 Define_Module(MyVeinsApp);
+
+/* head of different wsm:
+T: traffic msg of original code;
+B: my beacon;
+Q: EREQ at discovery;
+P: EREP at discovery;
+D: data at TX;
+*/
+
+// job parameters
+double job_time = 0;
+double lambda = 50;
+double dataSize = 100e3;
+double resultSize = 100e3;
+double work_mean = 4;
+
+bool TxEnd;
 
 double speedLimit = 15;         // 15 m/s
 simtime_t my_bc_interval = 5;   // 5 s
 boost::mutex mtx;               // mtx for reading NAI table: single or multiple thread?
 
 
-void MyVeinsApp::send_beacon(int vehicleId, Coord speed, bool ifIdle, std::vector<int> hop1_Neighbor)         // send once, print all the information into one string of wsm data
+void MyVeinsApp::send_EREQ(std::queue job_queue, double job_time)
+{
+    string EREQ = "Q" + (string)myId + (string)curSpeed.x + (string)curSpeed.y + (string)curSpeed.z;
+
+    // write data to EREQ
+    for(int i = 0; i < job_queue.size(); i ++)
+    {
+        // calculate utility function
+        job temp = job_queue.front();
+        temp.utility = temp.workload / (temp.workload + job_time);
+        job_time -= temp.workload;
+
+        // add temp to a vector before data sending
+        job_vector.push_back(temp);
+        
+        // writ the brief into a string: only workload in EREQ
+        EREQ += (string)temp.workload;
+        job_queue.pop();
+    }
+
+    // send the message: 4k = 166 job, suppose wsm length is enough
+    WaveShortMessage * myEREQ = WaveShortMessage();
+    populate(myEREQ);
+    myEREQ->setWsmData(EREQ.c_str());
+    scheduleAt(simTime(), myEREQ);
+
+}
+
+void MyVeinsApp::send_EREP(int vehicleId, int rcvId, string str)
+{
+    // calculate bids for each job
+    string EREP = "P" + (string)vehicleId;
+    for(int i = 0; i < (int)job_brief.size()/ (2*(sizeof(int) + sizeof(double))); i ++)
+    {
+        double workload = str.substr(0, sizeof(double)).c_str(); 
+        str = str.substr(sizeof(double));
+        double bid = workload / computing_speed;                        // haven't considered just sharing part of computing resource
+        EREP += (string)bid;
+    }
+    
+    // send to rcvId
+    WaveShortMessage * myEREP = WaveShortMessage();
+    populate(myEREP);
+    myEREP->setRecipientAddress(rcvId);
+    myEREP->setWsmData(EREP.c_str());
+    scheduleAt(simTime(), myEREP);
+    
+    
+}
+
+void MyVeinsApp::generate_job(double lambda, int data_size, int result_size, double workload)
+{
+    // push job to queue
+    job myJob = {data_size, result_size, workload};
+    job_queue.push(myJob);
+
+    // generate interval obey exponential distribution: seems not work now?
+    std::default_random_engine generator;
+    std::exponential_distribution<double> distribution(lambda);
+
+    // send wsm to generate next job
+    WaveShortMessage * jobMsg = WaveShortMessage();
+    populate(jobMsg);
+    jobMsg->setKind(GENERATE_JOB_EVT);
+    scheduleAt(simTime() + distribution(generator), jobMsg);
+
+
+}
+
+void MyVeinsApp::send_beacon(std::vector<int> hop1_Neighbor)         // send once, print all the information into one string of wsm data
 {
     // force converting each parameter into string for test now
 
-    string str = 'B' + (string)vehicleId + (string)speed.x + (string)speed.y + (string)speed.z + (string)ifIdle;      // string may have some offload?
+    string str = 'B' + (string)myId + (string)curSpeed.x + (string)curSpeed.y + (string)curSpeed.z + (string)idleState;      // string may have some offload?
     for(int i = 0; i < hop1_Neighbor.size(); i ++)
         str += (string)hop1_Neighbor.at(i);
 
@@ -46,8 +134,7 @@ void MyVeinsApp::send_beacon(int vehicleId, Coord speed, bool ifIdle, std::vecto
     bc->setWsmData(str.c_str());
     scheduleAt(simTime(), bc->dup());
 
-    break;
-    // schecule next beacon
+    // schecule next beacon: seems easy to schedule it here
     bc->setKind(SEND_MY_BC_EVT);
     scheduleAt(simTime() + my_bc_interval, bc);
 
@@ -99,10 +186,10 @@ void MyVeinsApp::initialize(int stage) {
 
     }
     else if (stage == 1) {
-        //Initializing members that require initialized other modules goes here
+        //Initializing members that require initialize  break;d other modules goes here
         vector<int> initialId(1,myId);
         if(node_type == PROCESSOR)
-            this->send_beacon(myid, curSpeed, idleState, initialId);          // cannot get myid? need some other operation?
+            send_beacon(initialId);          // cannot get myid? need some other operation?
     }
 }
 
@@ -128,7 +215,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
     EV<<wsm->getWsmData()<<"\n\n";
 
     const char* wdata = new char[strlen(wsm->getWsmData()) - 3];        // data without my header "T", "B" and "D"
-    wdata = wsm->getWsmData() + 1;                                      //
+    wdata = wsm->getWsmData() + 1;                                      // aukward code here..
 
     switch(wsm->getWsmData()[0]) {
     case 'T':    // original code for traffic information, unchanged
@@ -158,12 +245,12 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 
         // compare the speed
         Coord sourceSpeed(vx,vy,vz);
-        double speedDist = curSpeed.distance(sourceSpeed);
-        if(speedDist > speedLimit)
+        if(curSpeed.distance(sourceSpeed) > speedLimit)
         {
             delete(wsm);
             break;
         }
+
         // decode the neighbor ID and update the NAI table
         int hop1_num = (wsm->getWsmLength() - 30) / sizeof(int);            // 30 is length before neighbor part, should be varified
         vector<int> hop1_neighbor;
@@ -198,7 +285,57 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         }
         break;
 
+    case 'Q':
+        if(node_type == REQUESTER) break;
+        string str(wdata);
+
+        // decode the information of EREQ
+        int vehicleId = str.substr(0, sizeof(int)).c_str(); str = str.substr(sizeof(int));
+        double vx = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
+        double vy = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
+        double vz = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
+
+        Coord sourceSpeed(vx,vy,vz);
+        if(curSpeed.distance(sourceSpeed) > speedLimit)                                      // compare the speed
+        { 
+            delete(wsm);
+            break;
+        }
+
+        if(naiTable.find(vehicleId) && naiTable.NAI_map[vehicleId].hopNum == 1)              // 1 hop node forward EREQ
+            sendDown(wsm->dup());
+        
+        bool compatibility = rand() < 0.75*RAND_MAX? true:false;                             // consider compatibility
+        if(compatibility)
+            send_EREP(myId, vehicleId, str);                                                 // send back to the requester
+        break;
+        
+    case 'P':
+        if(node_type == PROCESSOR) break;
+        string wdata;
+        
+        // decode the information of EREP
+        int vehicleId = str.substr(0, sizeof(int)).c_str();                                 // note: here vehicleId may not be the sender but the source of EREP
+        str = str.substr(sizeof(int));
+        
+        if(naiTable.find(wsm->getRecipientAddress()) && naiTable.NAI_map[wsm->getRecipientAddress()].hopNum == 1)       // relay
+            sendDown(wsm->dup());
+        else if(wsm->getRecipientAddress() = myId)                                          // if this EREP is for the node
+        {
+            for(int i = 0; i < str.size() / sizeof(double); i ++)
+            {
+                double bid = str.substr(0, sizeof(double)).c_str();
+                str = str.substr(sizeof(double));
+                job_vector[i].bid.insert(std::pair<int, double>(vehicleId, bid));           // insert bid information for later scheduling
+            }        
+        }
+        break;
+        
     case 'D':   // data
+        // should decode wdata to get dataSize, resultSize and workload here
+
+
+        // accumulate the wsm data size to calculate a whole job size
         if(node_type == PROCESSOR)
         {
             int data_length = strlen(wdata) - 2;
@@ -212,7 +349,6 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 
                 // add the size information to processing queueing which is running all the time
                 int this_size = data_size.at(wsm->getSenderAddress());
-                process_queue.push_back(this_size);                                                                    // push the data into processor queue, maybe not useful now
                 if(current_task_time > simTime())
                     current_task_time += (double)this_size/computing_speed;
                 else
@@ -221,7 +357,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
                     current_task_time = simTime() + (double)this_size/computing_speed;
                 }
 
-                this->send_data(this_size, wsm->getSenderAddress(), 3, current_task_time);                                   // serial = 3 for now
+                send_data(this_size, wsm->getSenderAddress(), 3, current_task_time);                                   // serial = 3 for now
                 data_size.erase(wsm->getSenderAddress());                                                              // delete the sender's record at once to receive next data from the same sender!
 
             }
@@ -274,7 +410,25 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
             break;
 
         case SEND_MY_BC_EVT:
-            this->send_beacon(myId, curSpeed, idleState, naiTable.generate_hop1());
+            naiTable.update();
+            send_beacon(naiTable.generate_hop1());
+            break;
+
+        case GENERATE_JOB_EVT:
+            // if job caching ends: enter discovery directly
+            if(job_queue.size() > naiTable.value + 1 && TxEnd)              // job caching end condition
+            {
+                naiTable.update();
+                send_EREQ(job_queue, job_time);
+                job_time = 0;
+            }
+
+            // generate a new job on this node
+            std::default_random_engine generator;
+            std::exponential_distribution<double> distribution(work_mean);
+            double workload = distribution(generator);
+            job_time += workload;
+            generate_job(lambda, dataSize, resultSize, workload);
             break;
 
         default:
