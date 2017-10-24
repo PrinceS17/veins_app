@@ -19,6 +19,7 @@
 //
 
 #include <string>
+#include <sstream>
 #include <vector>
 #include <random>
 #include <boost/thread.hpp>
@@ -53,7 +54,8 @@ boost::mutex mtx;               // mtx for reading NAI table: single or multiple
 
 void MyVeinsApp::send_EREQ(std::queue job_queue, double job_time)
 {
-    string EREQ = "Q" + (string)myId + (string)curSpeed.x + (string)curSpeed.y + (string)curSpeed.z;
+    stringstream EREQ;
+    EREQ<<"Q "<< myId <<' '<< curSpeed.x <<' '<< curSpeed.y <<' '<< curSpeed.z <<' ';
 
     // write data to EREQ
     for(int i = 0; i < job_queue.size(); i ++)
@@ -67,35 +69,37 @@ void MyVeinsApp::send_EREQ(std::queue job_queue, double job_time)
         job_vector.push_back(temp);
         
         // writ the brief into a string: only workload in EREQ
-        EREQ += (string)temp.workload;
+        EREQ<< temp.workload <<' ';
         job_queue.pop();
     }
 
     // send the message: 4k = 166 job, suppose wsm length is enough
     WaveShortMessage * myEREQ = WaveShortMessage();
     populate(myEREQ);
-    myEREQ->setWsmData(EREQ.c_str());
+    myEREQ->setWsmData(EREQ.str().c_str());
     scheduleAt(simTime(), myEREQ);
 
 }
 
-void MyVeinsApp::send_EREP(int vehicleId, int rcvId, string str)
+void MyVeinsApp::send_EREP(int vehicleId, int rcvId, stringstream EREQ)
 {
     // calculate bids for each job
-    string EREP = "P" + (string)vehicleId;
+    stringstream EREP;
+    EREP <<"P "<<' '<< vehicleId <<' ';    
     for(int i = 0; i < (int)job_brief.size()/ (2*(sizeof(int) + sizeof(double))); i ++)
     {
-        double workload = str.substr(0, sizeof(double)).c_str(); 
-        str = str.substr(sizeof(double));
-        double bid = workload / computing_speed;                        // haven't considered just sharing part of computing resource
-        EREP += (string)bid;
+        double workload;
+        EREQ >> workload;
+        double bid = workload / computing_speed;
+        EREP << bid <<' ';
+        
     }
     
     // send to rcvId
     WaveShortMessage * myEREP = WaveShortMessage();
     populate(myEREP);
     myEREP->setRecipientAddress(rcvId);
-    myEREP->setWsmData(EREP.c_str());
+    myEREP->setWsmData(EREP.str().c_str());
     scheduleAt(simTime(), myEREP);
     
     
@@ -122,16 +126,17 @@ void MyVeinsApp::generate_job(double lambda, int data_size, int result_size, dou
 
 void MyVeinsApp::send_beacon(std::vector<int> hop1_Neighbor)         // send once, print all the information into one string of wsm data
 {
-    // force converting each parameter into string for test now
-
-    string str = 'B' + (string)myId + (string)curSpeed.x + (string)curSpeed.y + (string)curSpeed.z + (string)idleState;      // string may have some offload?
+    // force converting each parameter into stringstream for test now
+    stringstream ss;
+    ss<<"B "<< myId <<' '<< curSpeed.x <<' '<< curSpeed.y <<' '<< curSpeed.z <<' '<< idleState <<' ';
     for(int i = 0; i < hop1_Neighbor.size(); i ++)
-        str += (string)hop1_Neighbor.at(i);
-
+        ss << hop1_Neighbor.at(i);
+    
+    
     // send beacon now
     WaveShortMessage * bc = WaveShortMessage();
     populateWSM(bc);
-    bc->setWsmData(str.c_str());
+    bc->setWsmData(ss.str().c_str());
     scheduleAt(simTime(), bc->dup());
 
     // schecule next beacon: seems easy to schedule it here
@@ -216,6 +221,8 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 
     const char* wdata = new char[strlen(wsm->getWsmData()) - 3];        // data without my header "T", "B" and "D"
     wdata = wsm->getWsmData() + 1;                                      // aukward code here..
+    stringstream ss;
+    ss.str(string(wdata));
 
     switch(wsm->getWsmData()[0]) {
     case 'T':    // original code for traffic information, unchanged
@@ -233,16 +240,12 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 
     case 'B':   // AVE beacon
         if(node_type == PROCESSOR) break;           // only requesters care about AVE beacon
-        string str(wdata);
-
-        // decode the information of beacon
-        int vehicleId = str.substr(0, sizeof(int)).c_str(); str = str.substr(sizeof(int));
-        double vx = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
-        double vy = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
-        double vz = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
-        bool ifIdle = str.substr(0, sizeof(bool)).c_str(); str = str.substr(sizeof(bool));
+        int vehicleId;
+        double vx, vy, vz;
+        bool ifIdle;
+        ss>> vehicleId >> vx >> vy >> vz >> ifIdle;
         simtime_t expiredTime = simTime() + my_bc_interval;
-
+         
         // compare the speed
         Coord sourceSpeed(vx,vy,vz);
         if(curSpeed.distance(sourceSpeed) > speedLimit)
@@ -257,8 +260,8 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 
         for(int i = 0; i < hop1_num; i ++)
         {
-            int neighborId = str.substr(0, sizeof(int)).c_str();
-            str = str.substr(sizeof(int));
+            int neighborId;
+            ss>> neighborId;
 
             // mtx.lock();
             int hopNum;
@@ -287,14 +290,10 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 
     case 'Q':
         if(node_type == REQUESTER) break;
-        string str(wdata);
-
-        // decode the information of EREQ
-        int vehicleId = str.substr(0, sizeof(int)).c_str(); str = str.substr(sizeof(int));
-        double vx = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
-        double vy = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
-        double vz = str.substr(0, sizeof(double)).c_str(); str = str.substr(sizeof(double));
-
+        int vehicleId;
+        double vx, vy, vz;
+        ss>> vehicleId >> vx >> vy >> vz;
+        
         Coord sourceSpeed(vx,vy,vz);
         if(curSpeed.distance(sourceSpeed) > speedLimit)                                      // compare the speed
         { 
@@ -312,11 +311,8 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         
     case 'P':
         if(node_type == PROCESSOR) break;
-        string wdata;
-        
-        // decode the information of EREP
-        int vehicleId = str.substr(0, sizeof(int)).c_str();                                 // note: here vehicleId may not be the sender but the source of EREP
-        str = str.substr(sizeof(int));
+        int vehicleId;
+        ss>> vehicleId; 
         
         if(naiTable.find(wsm->getRecipientAddress()) && naiTable.NAI_map[wsm->getRecipientAddress()].hopNum == 1)       // relay
             sendDown(wsm->dup());
@@ -324,20 +320,24 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         {
             for(int i = 0; i < str.size() / sizeof(double); i ++)
             {
-                double bid = str.substr(0, sizeof(double)).c_str();
-                str = str.substr(sizeof(double));
+                double bid;
+                ss>> bid;
                 job_vector[i].bid.insert(std::pair<int, double>(vehicleId, bid));           // insert bid information for later scheduling
             }        
         }
         break;
         
     case 'D':   // data
-        // should decode wdata to get dataSize, resultSize and workload here
+        // should decode wdata to get dataSize, resultSize and workload here and send back result of the size
+        
 
 
         // accumulate the wsm data size to calculate a whole job size
         if(node_type == PROCESSOR)
         {
+            
+            
+            
             int data_length = strlen(wdata) - 2;
             if(data_size.find(wsm->getSenderAddress()) == std::data_size.end())               // if it's the first wsm from this sender (data may consist of many wsm)
                 data_size.insert(std::pair<int,int>(wsm->getSenderAddress, data_length ));
@@ -357,6 +357,11 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
                     current_task_time = simTime() + (double)this_size/computing_speed;
                 }
 
+                
+                
+                
+                
+                
                 send_data(this_size, wsm->getSenderAddress(), 3, current_task_time);                                   // serial = 3 for now
                 data_size.erase(wsm->getSenderAddress());                                                              // delete the sender's record at once to receive next data from the same sender!
 
@@ -384,8 +389,7 @@ void MyVeinsApp::onWSA(WaveServiceAdvertisment* wsa) {
     //Your application has received a service advertisement from another car or RSU
     //code for handling the message goes here, see TraciDemo11p.cc for examples
 
-    // example in TraCIDemo means th at change ch
-    break;annel according to wsa and not use more information
+    // example in TraCIDemo means that change channel according to wsa and not use more information
     if (currentSubscribedServiceId == -1) {
         mac->changeServiceChannel(wsa->getTargetChannel());
         currentSubscribedServiceId = wsa->getPsid();

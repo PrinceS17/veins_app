@@ -49,7 +49,7 @@ typedef struct job
     int result_size;        // after processing
     double workload;        // for processing time calculation
     double utility;
-    map<int, double> bid;   // map: processor and its bid
+    map<int, double> bid;   // only in requester: multiple processors and their bids; it is cumbersome for processor to keep it
 
 };
 
@@ -94,7 +94,7 @@ public:
         if(NAI_map.find(vehicleId) != NAI_map.end())        // ID exists in table
         {
             NAI_map.erase(vehicleId);                       // suppose that must be the 1st entry to be removed because it's earliest
-            NAI_vector.pop_back();                          // otherwise we have to look through all entries
+            NAI_vector.pop_back();                          // otherwise we have to look through all entries: may cause problem
             length --;
             return true;
         }
@@ -147,11 +147,14 @@ public:
         return NAI_value;
     }
 
-    void update()           // delete expire entries and calculate NAI value
+    void update()                // delete expire entries and calculate NAI value
     {
-
-
-
+        for(int i = 0; i < length; i ++)
+        {
+            if(NAI_map[NAI_vector.at(i)].expiredTime <= simTime())
+                erase(NAI_vector.at(i));
+        }
+        value = calculate_NAI();
     }
 
 };
