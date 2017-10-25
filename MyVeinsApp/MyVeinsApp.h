@@ -43,7 +43,7 @@ enum enum_type {PROCESSOR, REQUESTER};
 int max_num_neighbor = 50;              // follow AVE paper
 double phi = 0.8;                       // for NAI calculation
 
-typedef struct job
+struct job
 {
     int data_size;          // TX data
     int result_size;        // after processing
@@ -54,7 +54,7 @@ typedef struct job
 };
 
 // struct of NAI entry
-typedef struct NAI
+struct NAI
 {
     //int vehicleId;
     bool ifIdle;
@@ -82,7 +82,7 @@ public:
         length ++;
     }
 
-    void push_back(int vehicleId, bool ifIdle, int hopNum, simTime expiredTime)
+    void push_back(int vehicleId, bool ifIdle, int hopNum, simtime_t expiredTime)
     {
         NAI entry = {ifIdle, hopNum, expiredTime};
         this->push_back(vehicleId, entry);

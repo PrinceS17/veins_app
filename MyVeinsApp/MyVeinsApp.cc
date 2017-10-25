@@ -145,7 +145,7 @@ void MyVeinsApp::send_beacon(std::vector<int> hop1_Neighbor)         // send onc
 
 }
 
-void MyVeinsApp::send_data(int size, int rcvId, int serial, simTime time)        // send data of size wave short messages, containing schedule continuously
+void MyVeinsApp::send_data(int size, int rcvId, int serial, simtime_t time)        // send data of size wave short messages, containing schedule continuously
 {
     int max_size = 4095;                    // max size of wsm data, except "D" at the start
     int num = (size + 2)/max_size + 1;      // number of wsm, 2 is "ed"
@@ -167,12 +167,27 @@ void MyVeinsApp::send_data(int size, int rcvId, int serial, simTime time)       
         data->setKind(SEND_DATA_EVT);           // cooperate with handleSelfMsg
         data->setWsmLength(l);
         data->setWsmData(str.c_str());
-        scheduleAt(time + slot, data);          // send each wsm in every slot, also could be other method
+        scheduleAt(time + i*slot, data);          // send each wsm in every slot, also could be other method
         if(current_task_time <= simTime())      // if processor becomes idle after sending data
             idleState = true;
-
     }
 
+}
+
+void MyVeinsApp::send_data(job myJob, int rcvId, int serial, simtime_t time)        // overload for requester sending data with job brief
+{
+    // send first wsm contaning brief info of the job
+    stringstream ss;
+    ss<< myJob.data_size <<' '<< myJob.result_size <<' '<< myJob.workload <<' '<< myJob.utility <<' '<< myJob.bid[rcvId] <<' ';
+    WaveShortMessage * pre_data = WaveShortMessage();
+    populateWSM(pre_data, rcvId, serial);
+    pre_data->setKind(SEND_DATA_EVT);
+    pre_data->setWsmData(ss.str().c_str());
+    scheduleAt(time, pre_data);
+    
+    // send data of job's data size
+    send_data(myJob.data_size, rcvId, serial, time + slot);
+    
 }
 
 void MyVeinsApp::initialize(int stage) {
