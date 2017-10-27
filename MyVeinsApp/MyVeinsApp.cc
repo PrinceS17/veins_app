@@ -157,9 +157,9 @@ void MyVeinsApp::send_data(int size, int rcvId, int serial, simtime_t time)     
         int l = max_size;
         if(i == num - 1) l = last_size;
 
-        string str;
-        for(int j = 0; j < l; j ++) str+= '0';
-        str = "D" + str;
+        stringstream ss;
+        ss<<'D '<< myId <<' ';
+        for(int j = ss.str().size(); j < l; j ++) ss<< '0';
         if(i == num - 1) str += "ed";
 
         WaveShortMessage * data = WaveShortMessage();
@@ -178,7 +178,7 @@ void MyVeinsApp::send_data(job myJob, int rcvId, int serial, simtime_t time)    
 {
     // send first wsm contaning brief info of the job
     stringstream ss;
-    ss<< myJob.data_size <<' '<< myJob.result_size <<' '<< myJob.workload <<' '<< myJob.utility <<' '<< myJob.bid[rcvId] <<' ';
+    ss<<'J '<< myId <<' '<< myJob.data_size <<' '<< myJob.result_size <<' '<< myJob.workload <<' '<< myJob.utility <<' '<< myJob.bid[rcvId] <<' ';
     WaveShortMessage * pre_data = WaveShortMessage();
     populateWSM(pre_data, rcvId, serial);
     pre_data->setKind(SEND_DATA_EVT);
@@ -253,7 +253,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         }
         break;
 
-    case 'B':   // AVE beacon
+    case 'B':   // AVE beacon: not relayed
         if(node_type == PROCESSOR) break;           // only requesters care about AVE beacon
         int vehicleId;
         double vx, vy, vz;
@@ -317,11 +317,13 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         }
 
         if(naiTable.find(vehicleId) && naiTable.NAI_map[vehicleId].hopNum == 1)              // 1 hop node forward EREQ
+        {
+            wsm->setSenderAddress(myId);
             sendDown(wsm->dup());
-        
+        }
         bool compatibility = rand() < 0.75*RAND_MAX? true:false;                             // consider compatibility
         if(compatibility)
-            send_EREP(myId, vehicleId, str);                                                 // send back to the requester
+            send_EREP(myId, vehicleId, ss);                                                 // send back to the requester
         break;
         
     case 'P':
@@ -330,7 +332,10 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         ss>> vehicleId; 
         
         if(naiTable.find(wsm->getRecipientAddress()) && naiTable.NAI_map[wsm->getRecipientAddress()].hopNum == 1)       // relay
+        {
+            wsm->setSenderAddress(myId);
             sendDown(wsm->dup());
+        }
         else if(wsm->getRecipientAddress() = myId)                                          // if this EREP is for the node
         {
             for(int i = 0; i < str.size() / sizeof(double); i ++)
@@ -342,59 +347,71 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         }
         break;
         
+    case 'J':
+        // should decode wdata to get dataSize, resultSize and workload here and send back result of the size
+        if(wsm->getRecipientAddress() != myId) 
+        {
+            wsm->setSenderAddress(myId);
+            sendDown(wsm->dup());
+            break;            
+        }
+        
+        // if the recipient is specified, then it must be a processor
+        job myJob;
+        ss>> myJob.data_size >> myJob.result_size >> myJob.workload >> myJob.utility >> myJob.bid[wsm->getRecipientAddress()];
+        work_info.insert(std::pair<int, job>(vehicleId, myJob));                 // store source Id and the job in map!!!
+        
+        break;
+                    
     case 'D':   // data
         // should decode wdata to get dataSize, resultSize and workload here and send back result of the size
+        if(wsm->getRecipientAddress() != myId) 
+        {
+            wsm->setSenderAddress(myId);
+            sendDown(wsm->dup());
+            break;
+            
+        }
+       
+        int vehicleId;                      // Id of the requester
+        ss>> vehicleId;
+        job myJob = work_info[vehicleId];   // get info of current job
         
-
-
         // accumulate the wsm data size to calculate a whole job size
         if(node_type == PROCESSOR)
         {
-            
-            
-            
-            int data_length = strlen(wdata) - 2;
-            if(data_size.find(wsm->getSenderAddress()) == std::data_size.end())               // if it's the first wsm from this sender (data may consist of many wsm)
-                data_size.insert(std::pair<int,int>(wsm->getSenderAddress, data_length ));
-            else                                                                              // if not
-                data_size.at(wsm->getSenderAddress()) += data_length;
+               
+//            int data_length = strlen(wdata) - 2;
+//            if(data_size.find(wsm->getSenderAddress()) == std::data_size.end())               // if it's the first wsm from this sender (data may consist of many wsm)
+//                data_size.insert(std::pair<int,int>(wsm->getSenderAddress, data_length ));
+//            else                                                                              // if not
+//                data_size.at(wsm->getSenderAddress()) += data_length;
 
             if(!strcmp((const char*)wdata + strlen(wdata) - 2, "ed"))                         // if this wsm is the end of a complete data
             {
 
                 // add the size information to processing queueing which is running all the time
-                int this_size = data_size.at(wsm->getSenderAddress());
                 if(current_task_time > simTime())
-                    current_task_time += (double)this_size/computing_speed;
+                    current_task_time += (double) myJob.workload / computing_speed;
                 else
                 {
                     idleState = false;
-                    current_task_time = simTime() + (double)this_size/computing_speed;
+                    current_task_time = simTime() + (double)myJob.workload / computing_speed;
                 }
 
-                
-                
-                
-                
-                
-                send_data(this_size, wsm->getSenderAddress(), 3, current_task_time);                                   // serial = 3 for now
-                data_size.erase(wsm->getSenderAddress());                                                              // delete the sender's record at once to receive next data from the same sender!
+                // send back result data
+                send_data(myJob.result_size, vehicleId, 3, current_task_time);
+                work_info.erase(vehicleId);
 
             }
         }
         else if (node_type = REQUESTER)
         {
-            int data_length = strlen(wdata) - 2;
-            if(data_size.find(wsm->getSenderAddress()) == std::data_size.end())                      // results may come from many processor, here data_size mains result data size
-                data_size.insert(std::pair<int,int>(wsm->getSenderAddress, data_length ));
-            else
-                data_size.at(wsm->getSenderAddress()) += data_length;
+            // need to prevent it entering another phase?
+            
             if(!strcmp((const char*)wdata + strlen(wdata) - 2, "ed"))
             {
                 EV<<"Finish receiving result data from sender "<<wsm->getSenderAddress()<<" !\n";    // maybe add time calculation later
-                EV<<"data size: "<<data_length<<" B\n\n";
-                data_size.erase(wsm->getSenderAddress());
-
             }
         }
     }

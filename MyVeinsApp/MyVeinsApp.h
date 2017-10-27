@@ -171,6 +171,7 @@ class MyVeinsApp : public BaseWaveApplLayer {
         // my own definitions
         enum_type node_type;            // the node is requester or processor
         std::map<int,int> data_size;    // record the change of task sizes for both requester and processor
+        std::map<int, job> work_info;   // record the task queue
         std::queue<job> job_queue;      // imitate the processing queue
         std::vector<job> job_vector;    // store necessary information of jobs to be sent
         simtime_t current_task_time;
@@ -192,6 +193,7 @@ class MyVeinsApp : public BaseWaveApplLayer {
         virtual void generate_job(double lambda, int data_size, int result_size, double workload);
         virtual void send_beacon(std::vector<int> hop1_Neighbor);
         virtual void send_data(int size, int rcvId, int serial, simTime time);
+        virtual void send_data(job myJob, int rcvId, int serial, simTime time);
 
     };
 
