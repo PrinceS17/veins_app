@@ -22,6 +22,7 @@
 #define __VEINS_MYVEINSAPP_H_
 
 #include <omnetpp.h>
+#include <cstdlib>
 #include <map>
 #include "veins/modules/application/ieee80211p/BaseWaveApplLayer.h"
 
@@ -42,6 +43,15 @@ using namespace std;
 enum enum_type {PROCESSOR, REQUESTER};
 int max_num_neighbor = 50;              // follow AVE paper
 double phi = 0.8;                       // for NAI calculation
+
+struct CmpByValue
+{
+    bool operator()(const pair<int, double> p1, const pair<int, double> p2)
+    {
+        return p1.second < p2.second;
+    }
+    
+}cmp;
 
 struct job
 {
@@ -73,7 +83,7 @@ public:
 
 public:
     NAI_table() {length = 0;}
-    ~NAI_table();
+    //~NAI_table();
 
     void push_back(int vehicleId, NAI entry)       // push bask the entry to the end of NAI table
     {
@@ -121,9 +131,10 @@ public:
             vector<int> temp(max_num_neighbor);
             for(int i = 0; i < max_num_neighbor; i ++)
             {
-                int ri = randint(0, hop1_neighbor.size() - 1 - i);                                 // get random max_num entries from hop1 vector
+                // int ri = randint(0, hop1_neighbor.size() - 1 - i);                                 // get random max_num entries from hop1 vector
+                int ri = rand() % static_cast<int>(hop1_neighbor.size() - i);
                 temp.push_back(hop1_neighbor.at(ri));
-                hop1_neighbor.erase(ri);
+                hop1_neighbor.erase(hop1_neighbor.begin() + ri);
             }
 
             // temp.assign(hop1_neighbor.end() - max_num_neighbor + 1, hop1_neighbor.end());       // get last max_num entries, here not randomly
@@ -176,7 +187,7 @@ class MyVeinsApp : public BaseWaveApplLayer {
         std::vector<job> job_vector;    // store necessary information of jobs to be sent
         simtime_t current_task_time;
         double computing_speed;         // unified, U(1,2) for workload
-        bool idleState;                 // another name of ifIdle
+        bool idleState;                 // another name of ifIdle, in requester: false at data transmission; in processor: false when processing
         NAI_table naiTable;
 
     protected:
@@ -188,12 +199,13 @@ class MyVeinsApp : public BaseWaveApplLayer {
         virtual void handlePositionUpdate(cObject* obj);
 
         // my own function
-        virtual void send_EREP(int vehicleId, int rcvId, string str);
-        virtual void send_EREQ(std::queue job_queue, double job_time);
+        virtual void send_EREP(int vehicleId, int rcvId, stringstream &EREQ);
+        virtual void send_EREQ(std::queue<job> job_queue, double job_time);
         virtual void generate_job(double lambda, int data_size, int result_size, double workload);
         virtual void send_beacon(std::vector<int> hop1_Neighbor);
-        virtual void send_data(int size, int rcvId, int serial, simTime time);
-        virtual void send_data(job myJob, int rcvId, int serial, simTime time);
+        virtual vector<int> scheduling(vector<job> job_vector, int type);
+        virtual void send_data(int size, int rcvId, int serial, simtime_t time);
+        virtual void send_data(job myJob, int rcvId, int serial, simtime_t time);
 
     };
 
