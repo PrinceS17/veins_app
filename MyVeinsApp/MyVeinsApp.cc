@@ -211,7 +211,7 @@ void MyVeinsApp::send_data(job myJob, int rcvId, int serial, simtime_t time)    
 {
     // send first wsm contaning brief info of the job
     stringstream ss;
-    ss<<"J "<< myId <<' '<< myJob.data_size <<' '<< myJob.result_size <<' '<< myJob.workload <<' '<< myJob.utility <<' '<< myJob.bid[rcvId] <<' ';
+    ss<<"J "<< myId <<' '<< myJob.data_size <<' '<< myJob.result_size <<' '<< myJob.workload <<' '<< myJob.utility <<' '<< myJob.bid[rcvId] <<' '<<myJob.start;
     WaveShortMessage * pre_data = new WaveShortMessage();
     populateWSM(pre_data, rcvId, serial);
     pre_data->setKind(SEND_DATA_EVT);
@@ -238,6 +238,7 @@ void MyVeinsApp::initialize(int stage) {
         idleState = true;
         TxEnd = false;
         naiTable.push_back(myId, idleState, 0, simTime() + my_bc_interval);
+        sig = registerSignal("sig");
 
     }
     else if (stage == 1) {
@@ -384,7 +385,10 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         vector<int> serviceCar = scheduling(job_vector, 0);
         idleState = false;
         for(int i = 0; i < serviceCar.size(); i ++)
+        {
+            job_vector[i].start = simTime().dbl();                            // start of delay
             send_data(job_vector[i], serviceCar[i], 3, simTime());
+        }
         idleState = true;   
         TxEnd = true;
         
@@ -399,10 +403,10 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
             break;            
         }
         
-        // if the recipient is specified, then it must be a processor, so no need to judge
+        // if processor: then use work_info to process; if requester: use it to calculate delay
         job myJob;
         int vehicleId;
-        ss>> vehicleId >> myJob.data_size >> myJob.result_size >> myJob.workload >> myJob.utility >> myJob.bid[myId];        // index of bid doesn't matter
+        ss>> vehicleId >> myJob.data_size >> myJob.result_size >> myJob.workload >> myJob.utility >> myJob.bid[myId] >> myJob.start;        // index of bid doesn't matter
         work_info.insert(std::pair<int, job>(vehicleId, myJob));                                                // store source Id and the job in map!!!
         
         break;
@@ -453,9 +457,12 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         {
             // need to prevent it entering another phase?            
             bubble("Requester!");
+           
             if(!strcmp((const char*)wdata + strlen(wdata) - 2, "ed"))                                // hope this line works well!
             {
                 EV<<"Finish receiving result data from sender "<<wsm->getSenderAddress()<<" !\n";    // maybe add time calculation later
+                myJob.delay = simTime() - myJob.start;
+                emit(sig, myJob.delay);                                                              // use signal to record the delay of each job
             }
         }
     }

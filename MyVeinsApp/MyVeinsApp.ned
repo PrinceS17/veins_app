@@ -28,4 +28,6 @@ simple MyVeinsApp extends BaseWaveApplLayer
 {
     @class(MyVeinsApp);
     string appName = default("My first Veins App!");
+    @signal[sig](type = "long");
+        
 }

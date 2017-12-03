@@ -60,7 +60,9 @@ struct job
     double workload;        // for processing time calculation
     double utility;
     map<int, double> bid;   // only in requester: multiple processors and their bids; it is cumbersome for processor to keep it
-
+    
+    double start;        // start time of this job
+    simtime_t delay;        // the whole delay of this job, containing communication and computation time
 };
 
 // struct of NAI entry
@@ -189,6 +191,7 @@ class MyVeinsApp : public BaseWaveApplLayer {
         double computing_speed;         // unified, U(1,2) for workload
         bool idleState;                 // another name of ifIdle, in requester: false at data transmission; in processor: false when processing
         NAI_table naiTable;
+        simsignal_t sig;
 
     protected:
         virtual void onBSM(BasicSafetyMessage* bsm);
