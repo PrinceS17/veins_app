@@ -191,6 +191,9 @@ class MyVeinsApp : public BaseWaveApplLayer {
         double computing_speed;         // unified, U(1,2) for workload
         bool idleState;                 // another name of ifIdle, in requester: false at data transmission; in processor: false when processing
         NAI_table naiTable;
+        
+        // my statistic
+        cOutVector delayVec;
         simsignal_t sig;
 
     protected:

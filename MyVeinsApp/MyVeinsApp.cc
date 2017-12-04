@@ -53,6 +53,9 @@ bool TxEnd;
 double speedLimit = 15;         // 15 m/s
 double my_bc_interval = 5;   // 5 s
 
+// global variable
+simtime_t job_delay;
+
 
 void MyVeinsApp::send_EREQ(std::queue<job> job_queue, double job_time)
 {
@@ -269,6 +272,17 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
     // example code only handles the position changing message... so I must modify the whole code here with headers for identification
     EV<<"Receiving WSM:"<<std::endl;
     EV<<wsm->getWsmData()<<"\n\n";
+    
+    // for test: both work
+    job_delay = job_delay == 0.01? 0.02:0.01;
+    delayVec.record(job_delay);             
+    emit(sig, job_delay); 
+    
+    // try to display the last delay on the canvas
+    stringstream ss_delay;
+    ss_delay<<"last delay: "<< job_delay.dbl();
+    bubble(ss_delay.str().c_str());
+    
 
     char* wdata = new char[strlen(wsm->getWsmData()) - 1];        // data without my header "T", "B" and "D"
     strcpy(wdata, wsm->getWsmData() + 1);                               // need testing !!!
@@ -462,7 +476,10 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
             {
                 EV<<"Finish receiving result data from sender "<<wsm->getSenderAddress()<<" !\n";    // maybe add time calculation later
                 myJob.delay = simTime() - myJob.start;
-                emit(sig, myJob.delay);                                                              // use signal to record the delay of each job
+                job_delay = myJob.delay;
+                
+                emit(sig, job_delay);                                                              // use signal to record the delay of each job
+                recordScalar("job_delay", job_delay);             
             }
         }
     }

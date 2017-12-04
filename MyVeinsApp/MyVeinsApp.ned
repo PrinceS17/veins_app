@@ -28,6 +28,8 @@ simple MyVeinsApp extends BaseWaveApplLayer
 {
     @class(MyVeinsApp);
     string appName = default("My first Veins App!");
-    @signal[sig](type = "long");
-        
+    @signal[sig](type = "simtime_t");
+    @statistic[sig_delay](title = "sig delay"; source = "sig"; record = vector, mean;interpolationmode = none);		// record: can be either vector or scalar, the former better
+    
+    @figure[last_delay](type = text; pos = 100,100; text = "last delay: N/A");
 }
