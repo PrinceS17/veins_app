@@ -51,15 +51,33 @@ double slot = 0.05;
 bool TxEnd;
 
 double speedLimit = 15;         // 15 m/s
-double my_bc_interval = 5;   // 5 s
+double my_bc_interval = 1;   // 5 s
 
 // global variable
 simtime_t job_delay;
 
+void formal_out(const char * str, int lv)           // use output to debug
+{
+    switch(lv)
+    {
+    case 1:                     // event like onWSM
+        EV<<" "<< str <<"\n";
+        break;
+    case 2:                     // option like send beacon
+        EV<<"   "<< str <<"\n";
+        break;
+    case 3:                     // specific function like send EREQ
+        EV<<"     "<< str <<"\n";
+        break;
+    default: ;
+    }
+        
+}
 
 void MyVeinsApp::send_EREQ(std::queue<job> job_queue, double job_time)
 {
-    EV << "Sending EREQ!\n\n";
+    formal_out("sending EREQ...", 3);
+    
     stringstream EREQ;
     EREQ<<"Q "<< myId <<' '<< curSpeed.x <<' '<< curSpeed.y <<' '<< curSpeed.z <<' ';
 
@@ -89,7 +107,8 @@ void MyVeinsApp::send_EREQ(std::queue<job> job_queue, double job_time)
 
 void MyVeinsApp::send_EREP(int vehicleId, int rcvId, stringstream &EREQ)
 {
-    EV << "Sending EREP!\n\n";
+    formal_out("sending EREP...", 3);
+    
     // calculate bids for each job
     stringstream EREP;
     EREP <<"P "<<' '<< vehicleId <<' ';
@@ -114,7 +133,7 @@ void MyVeinsApp::send_EREP(int vehicleId, int rcvId, stringstream &EREQ)
 
 void MyVeinsApp::generate_job(double lambda, int data_size, int result_size, double workload)
 {
-    EV << "Generating jobs!\n\n";
+    formal_out("generating jobs...", 3);
     
     // push job to queue
     job myJob = {data_size, result_size, workload};
@@ -136,7 +155,7 @@ void MyVeinsApp::generate_job(double lambda, int data_size, int result_size, dou
 void MyVeinsApp::send_beacon(std::vector<int> hop1_Neighbor)         // send once, print all the information into one string of wsm data
 {
     // force converting each parameter into stringstream for test now
-    EV << "Sending my beacon!\n\n";
+    EV << "Sending my beacon!\n\n\n";
     
     stringstream ss;
     ss<<"B "<< myId <<' '<< curSpeed.x <<' '<< curSpeed.y <<' '<< curSpeed.z <<' '<< idleState <<' ';
@@ -158,7 +177,8 @@ void MyVeinsApp::send_beacon(std::vector<int> hop1_Neighbor)         // send onc
 
 vector<int> MyVeinsApp::scheduling(vector<job> job_vector, int type)             // schedule each job according to their job briefs
 {
-    EV << "Sending data!\n\n";
+    formal_out("scheduling...", 3);
+    
     vector<int> serviceCar;
     for(int i = 0; i < job_vector.size(); i ++)
     {
@@ -184,6 +204,8 @@ vector<int> MyVeinsApp::scheduling(vector<job> job_vector, int type)            
 
 void MyVeinsApp::send_data(int size, int rcvId, int serial, simtime_t time)        // send data of size wave short messages, containing schedule continuously
 {
+    formal_out("sending data...", 3);
+    
     int max_size = 4095;                    // max size of wsm data, except "D" at the start
     int num = (size + 2)/max_size + 1;      // number of wsm, 2 is "ed"
     int last_size = (size + 2)% max_size;   // last wsm size
@@ -212,6 +234,8 @@ void MyVeinsApp::send_data(int size, int rcvId, int serial, simtime_t time)     
 
 void MyVeinsApp::send_data(job myJob, int rcvId, int serial, simtime_t time)        // overload for requester sending data with job brief
 {
+    formal_out("sending data with job brief...", 3);
+    
     // send first wsm contaning brief info of the job
     stringstream ss;
     ss<<"J "<< myId <<' '<< myJob.data_size <<' '<< myJob.result_size <<' '<< myJob.workload <<' '<< myJob.utility <<' '<< myJob.bid[rcvId] <<' '<<myJob.start;
@@ -227,6 +251,8 @@ void MyVeinsApp::send_data(job myJob, int rcvId, int serial, simtime_t time)    
 }
 
 void MyVeinsApp::initialize(int stage) {
+    formal_out("Initializing...", 1);
+    
     BaseWaveApplLayer::initialize(stage);
     if (stage == 0) {
         //Initializing members and pointers of your application goes here
@@ -248,7 +274,10 @@ void MyVeinsApp::initialize(int stage) {
         //Initializing members that require initialize other modules goes here
         vector<int> initialId(1,myId);
         if(node_type == PROCESSOR)
+        {
             send_beacon(initialId);          // cannot get myid? need some other operation?
+        }
+         
     }
 }
 
@@ -261,7 +290,6 @@ void MyVeinsApp::finish() {
 void MyVeinsApp::onBSM(BasicSafetyMessage* bsm) {
     //Your application has received a beacon message from another car or RSU
     //code for handling the message goes here
-    EV<<"Receiving BSM!"<<std::endl;
 
 }
 
@@ -270,8 +298,9 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
     //code for handling the message goes here, see TraciDemo11p.cc for examples, (
 
     // example code only handles the position changing message... so I must modify the whole code here with headers for identification
-    EV<<"Receiving WSM:"<<std::endl;
-    EV<<wsm->getWsmData()<<"\n\n";
+    formal_out("Receiving WSM...", 1);
+    formal_out(wsm->getWsmData(), 1);
+    //EV<<wsm->getWsmData()<<"\n\n";
     
     // for test: both work
     job_delay = job_delay == 0.01? 0.02:0.01;
@@ -291,6 +320,8 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 
     switch(wsm->getWsmData()[0]) {
     case 'T':  {  // original code for traffic information, unchanged
+        formal_out("traffic info...", 2);
+        
         findHost()->getDisplayString().updateWith("r=16,green");
 
         if (mobility->getRoadId()[0] != ':') traciVehicle->changeRoute(wdata, 9999);
@@ -304,7 +335,10 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         break;
     }
     case 'B':  { // AVE beacon: not relayed
+        
         if(node_type == PROCESSOR) break;           // only requesters care about AVE beacon
+        formal_out("my beacon...", 2);
+        
         int vehicleId;
         double vx, vy, vz;
         bool ifIdle;
@@ -352,6 +386,8 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
     }
     case 'Q':{
         if(node_type == REQUESTER) break;
+        formal_out("EREQ...", 2);
+        
         int vehicleId;
         double vx, vy, vz;
         ss>> vehicleId >> vx >> vy >> vz;
@@ -375,6 +411,8 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
     }
     case 'P':{
         if(node_type == PROCESSOR) break;
+        formal_out("EREP...", 2);
+        
         int vehicleId;
         ss>> vehicleId; 
         
@@ -418,6 +456,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         }
         
         // if processor: then use work_info to process; if requester: use it to calculate delay
+        formal_out("job brief...", 2);
         job myJob;
         int vehicleId;
         ss>> vehicleId >> myJob.data_size >> myJob.result_size >> myJob.workload >> myJob.utility >> myJob.bid[myId] >> myJob.start;        // index of bid doesn't matter
@@ -434,7 +473,8 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
             break;
             
         }
-       
+        formal_out("data...", 2);
+        
         int vehicleId;                      // Id of the requester
         ss>> vehicleId;
         job myJob = work_info[vehicleId];   // get info of current job
@@ -474,12 +514,13 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
            
             if(!strcmp((const char*)wdata + strlen(wdata) - 2, "ed"))                                // hope this line works well!
             {
-                EV<<"Finish receiving result data from sender "<<wsm->getSenderAddress()<<" !\n";    // maybe add time calculation later
+                EV<<"--- Finish receiving result data from sender "<<wsm->getSenderAddress()<<" !\n";    // maybe add time calculation later
                 myJob.delay = simTime() - myJob.start;
                 job_delay = myJob.delay;
                 
                 emit(sig, job_delay);                                                              // use signal to record the delay of each job
-                recordScalar("job_delay", job_delay);             
+                // recordScalar("job_delay", job_delay);
+                delayVec.record(job_delay);  
             }
         }
     }
@@ -491,7 +532,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
 void MyVeinsApp::onWSA(WaveServiceAdvertisment* wsa) {
     //Your application has received a service advertisement from another car or RSU
     //code for handling the message goes here, see TraciDemo11p.cc for examples
-
+    
     // example in TraCIDemo means that change channel according to wsa and not use more information
     if (currentSubscribedServiceId == -1) {
         mac->changeServiceChannel(wsa->getTargetChannel());
@@ -507,11 +548,15 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
     //BaseWaveApplLayer::handleSelfMsg(msg);      // should not be called twice!!
     //this method is for self messages (mostly timers)
     //it is important to call the BaseWaveApplLayer function for BSM and WSM transmission  // BSM and WSA?
-
+    
+    formal_out("Handling self message...", 1);
+        
     if (WaveShortMessage* wsm = dynamic_cast<WaveShortMessage*>(msg)) {         // if the pointer exists or not? I think most wsm case is this one?
         switch(msg->getKind()) {
         case SEND_DATA_EVT:
         {
+            formal_out("send data...", 2);
+            
             //not send the wsm for several times like traffic update
             sendDown(wsm->dup());                 // should consider resend or not?
             delete(wsm);
@@ -521,12 +566,16 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
         }
         case SEND_MY_BC_EVT:
         {
+            formal_out("send beacon...", 2);
+            
             naiTable.update();
             send_beacon(naiTable.generate_hop1());
             break;
         }
         case GENERATE_JOB_EVT:
         {
+            formal_out("generate jobs...", 2);
+            
             // if job caching ends: enter discovery directly
             if(job_queue.size() > naiTable.value + 1 && TxEnd)              // job caching end condition
             {
@@ -548,6 +597,8 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
         {
            //send this message on the service channel until the counter is 3 or higher.
            //this code only runs when channel switching is enabled                  // what's it?
+           // formal_out("default...", 2);
+            
            sendDown(wsm->dup());
            wsm->setSerial(wsm->getSerial() +1);
            if (wsm->getSerial() >= 3) {
@@ -577,6 +628,8 @@ void MyVeinsApp::handlePositionUpdate(cObject* obj) {
 //        if (simTime() - lastDroveAt >= 0 && sentMessage == false) {
 //
 //
+    formal_out("Handling position update...", 1);
+    
             findHost()->getDisplayString().updateWith("r=16,red");
             sentMessage = true;
 
