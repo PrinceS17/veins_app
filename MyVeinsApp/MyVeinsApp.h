@@ -162,12 +162,20 @@ public:
 
     void update()                // delete expire entries and calculate NAI value
     {
+        // should only for debug
+                EV <<"length = "<< length <<endl;
+                for(int i = 0; i < length; i ++)
+                    EV <<"  No. "<< i <<", id: "<< NAI_vector.at(i)<<" , # hop: "<< NAI_map[NAI_vector.at(i)].hopNum << endl;
+                   
+     
         for(int i = 0; i < length; i ++)
         {
             if(NAI_map[NAI_vector.at(i)].expiredTime <= simTime())
                 erase(NAI_vector.at(i));
         }
         value = calculate_NAI();
+        
+              
     }
 
 };

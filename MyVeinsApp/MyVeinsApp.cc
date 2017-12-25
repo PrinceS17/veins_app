@@ -42,19 +42,27 @@ J: job brief before sending data
 
 // job parameters
 double job_time = 0;
-double lambda = 50;
+double lambda = 5;
 double dataSize = 100e3;
 double resultSize = 100e3;
 double work_mean = 4;
-double slot = 0.05;
+double slot = 0.001;         // what is the typical value? 
 
 bool TxEnd;
 
-double speedLimit = 15;         // 15 m/s
+double rtd = 0.05;           // 50 ms
+double t_disc = 0;
+double speedLimit = 15;      // 15 m/s
 double my_bc_interval = 1;   // 5 s
 
 // global variable
 simtime_t job_delay;
+
+// Poission Process Setting
+std::default_random_engine generator;
+std::exponential_distribution<double> jobInterval_dstrb(lambda);         // intervals between jobs
+std::exponential_distribution<double> workload_dstrb(work_mean);      // job workload
+
 
 void formal_out(const char * str, int lv)           // use output to debug
 {
@@ -133,21 +141,19 @@ void MyVeinsApp::send_EREP(int vehicleId, int rcvId, stringstream &EREQ)
 
 void MyVeinsApp::generate_job(double lambda, int data_size, int result_size, double workload)
 {
-    formal_out("generating jobs...", 3);
+    // formal_out("generating jobs...", 3);
     
     // push job to queue
     job myJob = {data_size, result_size, workload};
     job_queue.push(myJob);
 
-    // generate interval obey exponential distribution: seems not work now?
-    std::default_random_engine generator;
-    std::exponential_distribution<double> distribution(lambda);
-
     // send wsm to generate next job
     WaveShortMessage * jobMsg = new WaveShortMessage();
     populateWSM(jobMsg);
     jobMsg->setKind(GENERATE_JOB_EVT);
-    scheduleAt(simTime() + distribution(generator), jobMsg);
+    double x = jobInterval_dstrb(generator);
+    EV << "   -- x = "<< x << endl;
+    scheduleAt(simTime() + x, jobMsg);
 
 
 }
@@ -274,10 +280,12 @@ void MyVeinsApp::initialize(int stage) {
         //Initializing members that require initialize other modules goes here
         vector<int> initialId(1,myId);
         if(node_type == PROCESSOR)
-        {
             send_beacon(initialId);          // cannot get myid? need some other operation?
+        else
+        {
+            generate_job(lambda, 1, 1, 0);   // virtual job, to starting normal job caching
+            t_disc = simTime().dbl();
         }
-         
     }
 }
 
@@ -349,6 +357,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         Coord sourceSpeed(vx,vy,vz);
         if(curSpeed.distance(sourceSpeed) > speedLimit)
         {
+            formal_out("Speed difference too large!", 3);
             delete(wsm);
             break;
         }
@@ -368,7 +377,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
                     hopNum = 1;
                 else
                     hopNum = 2;
-                naiTable.push_back(vehicleId, ifIdle, hopNum, expiredTime);
+                naiTable.push_back(neighborId, ifIdle, hopNum, expiredTime);
             }
             else if(neighborId == vehicleId)                    // if the source entry is already in the table: update
             {
@@ -395,6 +404,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         Coord sourceSpeed(vx,vy,vz);
         if(curSpeed.distance(sourceSpeed) > speedLimit)                                      // compare the speed
         { 
+            formal_out("Speed difference too large!", 3);
             delete(wsm);
             break;
         }
@@ -420,8 +430,10 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         {
             wsm->setSenderAddress(myId);
             sendDown(wsm->dup());
+            break;
         }
-        else if(wsm->getRecipientAddress() == myId)                                          // if this EREP is for the node
+        
+        if(wsm->getRecipientAddress() == myId)                                          // if this EREP is for the node
         {
             int i = 0;
             while(!ss.eof())
@@ -433,13 +445,17 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
             }        
         }
         
+        t_disc = simTime().dbl() - t_disc;
+        if(t_disc < rtd) break;                                               // if there's still time for discovery
+        
         // enter scheduling phase and then begin data transmission
+        formal_out("Entering scheduling phase!", 3);
         vector<int> serviceCar = scheduling(job_vector, 0);
         idleState = false;
         for(int i = 0; i < serviceCar.size(); i ++)
         {
             job_vector[i].start = simTime().dbl();                            // start of delay
-            send_data(job_vector[i], serviceCar[i], 3, simTime());
+            send_data(job_vector[i], serviceCar[i], 3, simTime());           
         }
         idleState = true;   
         TxEnd = true;
@@ -585,10 +601,9 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
                 TxEnd = false;
             }
 
-            // generate a new job on this node
-            std::default_random_engine generator;
-            std::exponential_distribution<double> distribution(work_mean);
-            double workload = distribution(generator);
+            // generate a new job on this requester
+            if(node_type == PROCESSOR) break;       
+            double workload = workload_dstrb(generator);
             job_time += workload;
             generate_job(lambda, dataSize, resultSize, workload);
             break;
