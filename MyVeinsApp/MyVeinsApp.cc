@@ -59,9 +59,9 @@ double my_bc_interval = 1;   // 5 s
 simtime_t job_delay;
 
 // Poission Process Setting
-std::default_random_engine generator;
+std::default_random_engine job_g, work_g;
 std::exponential_distribution<double> jobInterval_dstrb(lambda);         // intervals between jobs
-std::exponential_distribution<double> workload_dstrb(work_mean);      // job workload
+std::exponential_distribution<double> workload_dstrb(1 / work_mean);      // job workload
 
 
 void formal_out(const char * str, int lv)           // use output to debug
@@ -90,7 +90,8 @@ void MyVeinsApp::send_EREQ(std::queue<job> job_queue, double job_time)
     EREQ<<"Q "<< myId <<' '<< curSpeed.x <<' '<< curSpeed.y <<' '<< curSpeed.z <<' ';
 
     // write data to EREQ
-    for(int i = 0; i < job_queue.size(); i ++)
+    int max_size = job_queue.size();
+    for(int i = 0; i < max_size; i ++)
     {
         // calculate utility function
         job temp = job_queue.front();
@@ -120,14 +121,16 @@ void MyVeinsApp::send_EREP(int vehicleId, int rcvId, stringstream &EREQ)
     // calculate bids for each job
     stringstream EREP;
     EREP <<"P "<<' '<< vehicleId <<' ';
+    int nump = 0;
     while(!EREQ.eof())
     {
         double workload;
         EREQ >> workload;
         double bid = workload / computing_speed;
         EREP << bid <<' ';
-        
+        nump ++;
     }
+    int k = nump;
     
     // send to rcvId
     WaveShortMessage * myEREP = new WaveShortMessage();
@@ -146,13 +149,15 @@ void MyVeinsApp::generate_job(double lambda, int data_size, int result_size, dou
     // push job to queue
     job myJob = {data_size, result_size, workload};
     job_queue.push(myJob);
-
+    string str;
+    str = "queue length: " + to_string(job_queue.size()) + " ; last job: " + to_string(job_queue.back().workload);
+    formal_out(str.c_str(), 3);
+    
     // send wsm to generate next job
     WaveShortMessage * jobMsg = new WaveShortMessage();
     populateWSM(jobMsg);
     jobMsg->setKind(GENERATE_JOB_EVT);
-    double x = jobInterval_dstrb(generator);
-    EV << "   -- x = "<< x << endl;
+    double x = jobInterval_dstrb(job_g);
     scheduleAt(simTime() + x, jobMsg);
 
 
@@ -161,7 +166,6 @@ void MyVeinsApp::generate_job(double lambda, int data_size, int result_size, dou
 void MyVeinsApp::send_beacon(std::vector<int> hop1_Neighbor)         // send once, print all the information into one string of wsm data
 {
     // force converting each parameter into stringstream for test now
-    EV << "Sending my beacon!\n\n\n";
     
     stringstream ss;
     ss<<"B "<< myId <<' '<< curSpeed.x <<' '<< curSpeed.y <<' '<< curSpeed.z <<' '<< idleState <<' ';
@@ -194,7 +198,14 @@ vector<int> MyVeinsApp::scheduling(vector<job> job_vector, int type)            
         switch(type)
         {
         case 0:             // choose randomly
-            ri = rand() % static_cast<int>(bid.size());
+            ri = rand() % static_cast<int>(bid.size());             // cause error code 136, bid.size() = 0
+            
+            
+            
+            
+            
+            
+            
             serviceCar.push_back(bid_vec[ri].first);      
             break;
         case 1:             // choose the vehicle who has the least bid
@@ -271,7 +282,7 @@ void MyVeinsApp::initialize(int stage) {
         current_task_time = 0;
         computing_speed = 1e3;                          // can be specified by our demand
         idleState = true;
-        TxEnd = false;
+        TxEnd = true;
         naiTable.push_back(myId, idleState, 0, simTime() + my_bc_interval);
         sig = registerSignal("sig");
 
@@ -342,9 +353,8 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         }
         break;
     }
-    case 'B':  { // AVE beacon: not relayed
-        
-        if(node_type == PROCESSOR) break;           // only requesters care about AVE beacon
+    case 'B':  { // AVE beacon: not relayed, can be received by processor
+                    
         formal_out("my beacon...", 2);
         
         int vehicleId;
@@ -424,7 +434,9 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         formal_out("EREP...", 2);
         
         int vehicleId;
+       // int st, ed;                 // start & end of job vector for scheduling
         ss>> vehicleId; 
+        
         
         if(naiTable.find(wsm->getRecipientAddress()) && naiTable.NAI_map[wsm->getRecipientAddress()].hopNum == 1)       // relay
         {
@@ -590,7 +602,8 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
         }
         case GENERATE_JOB_EVT:
         {
-            formal_out("generate jobs...", 2);
+            string str = "generate jobs... NAI value: " + to_string(naiTable.value + 1);
+            formal_out(str.c_str(), 2);
             
             // if job caching ends: enter discovery directly
             if(job_queue.size() > naiTable.value + 1 && TxEnd)              // job caching end condition
@@ -603,7 +616,7 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
 
             // generate a new job on this requester
             if(node_type == PROCESSOR) break;       
-            double workload = workload_dstrb(generator);
+            double workload = workload_dstrb(work_g);
             job_time += workload;
             generate_job(lambda, dataSize, resultSize, workload);
             break;
