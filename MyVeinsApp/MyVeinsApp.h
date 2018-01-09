@@ -24,6 +24,7 @@
 #include <omnetpp.h>
 #include <cstdlib>
 #include <map>
+#include <sstream>
 #include "veins/modules/application/ieee80211p/BaseWaveApplLayer.h"
 
 using namespace omnetpp;
@@ -41,6 +42,8 @@ using namespace std;
 
 // this is a type of node
 enum enum_type {PROCESSOR, REQUESTER};
+enum state_type {BEA, CAC, DIS, SCH, DAT};
+
 int max_num_neighbor = 50;              // follow AVE paper
 double phi = 0.8;                       // for NAI calculation
 
@@ -202,7 +205,7 @@ class MyVeinsApp : public BaseWaveApplLayer {
         
         // my statistic
         cOutVector delayVec;
-        simsignal_t sig;
+        // simsignal_t sig;
 
     protected:
         virtual void onBSM(BasicSafetyMessage* bsm);
@@ -220,6 +223,14 @@ class MyVeinsApp : public BaseWaveApplLayer {
         virtual vector<int> scheduling(vector<job> job_vector, int type);
         virtual void send_data(int size, int rcvId, int serial, simtime_t time);
         virtual void send_data(job myJob, int rcvId, int serial, simtime_t time);
+        
+        // state
+        virtual void bea(WaveShortMessage* wsm, stringstream* ss_ptr );     // beaconing state, P: start in handleSelfMsg() and call send_beacon()            
+        virtual void cac();     // job caching state, R: start in handleSelfMsg(), call generate_job() to push the jobs in queue
+        virtual vector<int> dis(int phase, WaveShortMessage* wsm , stringstream* ss_ptr );     // discovery state, R: start send_EREQ when cac ended, and process EREP in 'P' at last; P: process EREQ in 'Q' and call send_EREP()
+        virtual vector<int> sch(vector<int> v0);     // scheduling state, R: call scheduling()
+        virtual void dat(int phase, stringstream &ss, WaveShortMessage* wsm , vector<int> serviceCar);     // data transmission state, R: call send_data() in 'P' and receive data in 'D'until finished; P: receive data and process in 'J' and 'D'
+    
 
     };
 
