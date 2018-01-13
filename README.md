@@ -1,12 +1,12 @@
-# MyVeinsApp for Space-Air-Ground vehicular network
+# MyVeinsApp for Space-Air-Ground Vehicular Network
 
 ## Overview
 
 ## Data Structure
 ### 0. Wave Short Message
 ### 1. struct *job*
-### 2. queue<int> *job_queue*
-### 3. vector<int> *job_vector*
+### 2. queue\<int\> *job_queue*
+### 3. vector\<int\> *job_vector*
 
 ## Stages
 ### 1. Beaconing
