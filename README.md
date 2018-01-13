@@ -5,7 +5,7 @@
 
 ### 2, About the Softwares (version)
 
-## Data Structure
+## Data Structures
 ### 0. Wave Short Message
 ### 1. struct *job*
 ### 2. queue\<int\> *job_queue*
