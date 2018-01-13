@@ -10,25 +10,25 @@
 
 ## Stages
 ### 1. Beaconing
-#### 1) Phase in processor
+#### 1) Phase in processor: send beacons
 
-#### 2) Phase in requester
+#### 2) Phase in requester: receive beacons
 
 ### 2. Job Caching
-#### * Phase in requestor
+#### * Phase in requester: generate jobs
 
 ### 3. Discovery
-#### 1) Phase 0 in requester
+#### 1) Phase 0 in requester: request information
 
-#### 2) Phase in processor
+#### 2) Phase in processor: make response
 
-#### 3) Phase 1 in requester
+#### 3) Phase 1 in requester: collect information
 
 ### 4. Scehduling
 
 ### 5. Data Transmission
-#### 1) Phase 0 in requester
+#### 1) Phase 0 in requester: send job brief & data
 
-#### 2) Phase in processor
+#### 2) Phase in processor: receive & process job
 
-#### 3) Phase 1 in requester
+#### 3) Phase 1 in requester: get result
