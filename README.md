@@ -9,7 +9,8 @@ Autonomous Vehicular Edge (AVE) is a framework for edge computing on the road to
 One important difference is the assumption we make that one vehicle must be either requester (generate jobs and request computing resources) or processor (process jobs) , unlike that of AVE framework where every vehicle is both requester and processor. We suppose that only specific vehicles and platforms can provide computing resources in the near future. This difference causes a few changes of the stage, which will be explained in the following parts. 
 
 ### 2, About the Softwares
-Veins 
+The framework is based on Veins, which is simulator for vehicular network. It combines SUMO, a traffic simulation platform, and OMNeT++, an IDE for network simulation and realizes a great amont of communication elements such as IEEE 802.11p, WAVE and two-ray interference channel, which makes it convenient to build a vehicular network framework and analyze the simulation results. \[2\]
+
 The framework works on both Linux and Windows systems and it is mainly built and tested on ubuntu 16.04 LTS. SUMO 0.30.0, OMNeT++ 5.1.1, Veins 4.6 are used for simulation. For details about installation of Veins, please refer to [Veins tutorial][1]. You can also get enough information of SUMO and OMNeT++ there. 
 
 [1]:http://veins.car2x.org/tutorial/
@@ -49,3 +50,7 @@ The framework works on both Linux and Windows systems and it is mainly built and
 \[1\]  J. Feng, Z. Liu, C. Wu and Y. Ji, "[AVE: Autonomous Vehicular Edge Computing Framework with ACO-Based Scheduling][2]," in IEEE Transactions on Vehicular Technology, vol. 66, no. 12, pp. 10660-10675, Dec. 2017.
 
 [2]: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7946184&isnumber=8207705
+
+\[2\] Christoph Sommer, Reinhard German and Falko Dressler, "[Bidirectionally Coupled Network and Road Traffic Simulation for Improved IVC Analysis][3]," IEEE Transactions on Mobile Computing, vol. 10 (1), pp. 3-15, January 2011.
+
+[3]: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=5510240&isnumber=5640589
