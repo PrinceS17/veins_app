@@ -16,10 +16,18 @@ The framework works on both Linux and Windows systems and it is mainly built and
 [1]:http://veins.car2x.org/tutorial/
 
 ## Data Structures
-### 0. Wave Short Message
-### 1. struct *job*
-### 2. queue\<int\> *job_queue*
-### 3. vector\<int\> *job_vector*
+### 1. Messages
+WaveShortMessage(WSM), WaveServiceAdvertisement(WSA), BasicSafetyMessage (BSA) 
+
+
+### 2. Jobs
+struct *job*, queue\<job\> *job_queue*vector\<job\> *job_vector*
+
+### 3. NAI (Neighbor Availability Index) Table
+NAI entry, NAI table
+
+### 4. Work
+map\<int, job\> *work_info*
 
 ## Stages
 ### 1. Beaconing
