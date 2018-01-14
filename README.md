@@ -17,8 +17,11 @@ The framework works on both Linux and Windows systems and it is mainly built and
 
 ## Data Structures
 ### 1. Messages
-WaveShortMessage(WSM), WaveServiceAdvertisement(WSA), BasicSafetyMessage (BSA) 
+Different from the cMessage which general OMNeT++ application used, Veins encapsulates specific message classes according to Dedicated Short-Range Communications (DSRC) Standards. \[3\] There are 3 kinds of messages it uses, which are WaveShortMessage(WSM), WaveServiceAdvertisement(WSA) and BasicSafetyMessage (BSM). WSM is mainly used by us to send messages required by our framework. 
 
+Since many packets are directly sent from source to destination without routing in the vehicular environment, short messages are preferred to avoid great overhead. Therefore, WAVE Short Message Protocal (WSMP) is defined for more efficient 1-hop transmission and WSM is the packet using WSMP. Its head length ranges from 5 bytes to 20 bytes, which is far smaller than that of original IPV6 packets. WSA is the WSM which includes some DSRC service information and BSM is the WSM which includes some safety information like the current position and speed of the sender. 
+
+To send a WSM, we assert a WaveShortMessage*, set its data (a string of at most 4KB) and schedule its transmission. When receiving a WSM (WSA, BSM), the program calls onWSM() (onWSA(), onBSM()) to process the packet. To identify various messages we use in different cases, we set several headers as follows: T (traffic message of original code), B (my beacon in the framework), Q (EREQ at discovery), P (EREP at discovery), D (data content at transmission), J (job brief of data).     
 
 ### 2. Jobs
 struct *job*, queue\<job\> *job_queue*vector\<job\> *job_vector*
@@ -30,6 +33,7 @@ NAI entry, NAI table
 map\<int, job\> *work_info*
 
 ## Stages
+Event driven framework
 ### 1. Beaconing
 #### 1) Phase in processor: send beacons
 
@@ -62,3 +66,8 @@ map\<int, job\> *work_info*
 \[2\] Christoph Sommer, Reinhard German and Falko Dressler, "[Bidirectionally Coupled Network and Road Traffic Simulation for Improved IVC Analysis][3]," IEEE Transactions on Mobile Computing, vol. 10 (1), pp. 3-15, January 2011.
 
 [3]: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=5510240&isnumber=5640589
+
+\[3\] J. B. Kenney, "[Dedicated Short-Range Communications (DSRC) Standards in the United States][4]," in Proceedings of the IEEE, vol. 99, no. 7, pp. 1162-1182, July 2011.
+
+[4]: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=5888501&isnumber=5888494
+
