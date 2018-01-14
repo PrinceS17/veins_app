@@ -5,7 +5,7 @@
 
 
 ### 2, About the Softwares (version)
-The framework works on both Linux and Windows systems and it is mainly built and tested on ubuntu 16.04 LTS. SUMO 0.30.0, OMNeT++ 5.1.1, Veins 4.6 are used for simulation. For details about installing Veins, please refer to here[1].
+The framework works on both Linux and Windows systems and it is mainly built and tested on ubuntu 16.04 LTS. SUMO 0.30.0, OMNeT++ 5.1.1, Veins 4.6 are used for simulation. For details about installing Veins, please refer to [Veins tutorial][1].
 
 [1]:[http://veins.car2x.org/tutorial/]
 
