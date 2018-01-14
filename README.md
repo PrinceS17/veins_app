@@ -21,16 +21,16 @@ Different from the cMessage which general OMNeT++ application used, Veins encaps
 
 Since many packets are directly sent from source to destination without routing in the vehicular environment, short messages are preferred to avoid great overhead. Therefore, WAVE Short Message Protocal (WSMP) is defined for more efficient 1-hop transmission and WSM is the packet using WSMP. Its head length ranges from 5 bytes to 20 bytes, which is far smaller than that of original IPV6 packets. WSA is the WSM which includes some DSRC service information and BSM is the WSM which includes some safety information like the current position and speed of the sender. 
 
-To send a WSM, we assert a WaveShortMessage*, set its data (a string of at most 4KB) and schedule its transmission. When receiving a WSM (WSA, BSM), the program calls onWSM() (onWSA(), onBSM()) to process the packet. To identify various messages we use in different cases, we set several headers as follows: T (traffic message of original code), B (my beacon in the framework), Q (EREQ at discovery), P (EREP at discovery), D (data content at transmission), J (job brief of data).     
+To send a WSM, we assert a WaveShortMessage*, set its data (a string of at most 4KB) and schedule its transmission. When receiving a WSM (WSA, BSM), the program calls **onWSM()** (**onWSA()**, **onBSM()**) to process the packet. To identify various messages we use in different cases, we set several headers as follows: T (traffic message of original code), B (my beacon in the framework), Q (EREQ at discovery), P (EREP at discovery), D (data content at transmission), J (job brief of data).     
 
 ### 2. Jobs
-struct *job*, queue\<job\> *job_queue*vector\<job\> *job_vector*
+**struct _job_**, **queue\<job\> _job\_queue_**, **vector\<job\> _job\_vector_**
 
 ### 3. NAI (Neighbor Availability Index) Table
 NAI entry, NAI table
 
 ### 4. Work
-map\<int, job\> *work_info*
+**map\<int, job\> _work\_info_**
 
 ## Stages
 Event driven framework
