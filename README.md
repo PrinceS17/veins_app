@@ -32,10 +32,11 @@ NAI is an index indicating the amount of computing resources within the communic
 In our framework, **struct _NAI_**, an entry of the table, consists of idle state, number of hops and expire time (no ID). Moreover, **class _NAI\_table_** consists of members, such as a map from vehicle ID to NAI entries, a vector of the vehicle ID (for sequential access), length and NAI value, and several functions such as **push_back()**, **erase()**, **find()** and so on. We obtain the information from beaconing, calculate NAI value, and decide when to end job caching and start discovery through maintaining the NAI table. 
 
 ### 4. Work: map\<int, job\> _work\_info_
-To record the job after receiving data, we store the information of jobs in **map\<int, job\> _work\_info_**. Then the processor will process the job according to the relevant work load and send back the results. The requester will get corresponding information and store the total delay in its map and finally emit into a signal for statistical analysis. 
+To record the job after receiving data, we store the information of jobs in **map\<int, job\> _work\_info_**. Then the processor will process the job according to the corresponding work load and send back the results. The requester will get corresponding information and store the total delay in its map and finally emit into a signal for statistical analysis. 
 
 ## Stages
-Event driven framework
+Since the functions are event-driven in OMNeT++, MyVeinsApp.h and MyVeinsApp.cc provide us some basic function in advance such as **onBSM()**, **onWSM()**, **onWSA()**, **handleSelfMsg()**, **handlePositionUpdate()**. Among these we focus on **onWSM()** and **handleSelfMsg()**. The former is triggered when a node receives WSM; the latter, self message scheduled. In **onWSM()**, we decode the message and choose corresponding actions. When we need to schedule an event some time later or send messages out, we use **scheduleAt()** to call **handleSelfMsg()** after a specified time where different messages can be sent. Based on the two functions, we realize our framework which is similar to AVE framework. It consists of 5 stages: beaconing, job caching, discovery, scheduling and data transmission as follows.
+
 ### 1. Beaconing
 #### 1) Phase in processor: send beacons
 
