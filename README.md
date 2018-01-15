@@ -35,7 +35,7 @@ In our framework, **struct _NAI_**, an entry of the table, consists of idle stat
 To record the job after receiving data, we store the information of jobs in **map\<int, job\> _work\_info_**. Then the processor will process the job according to the corresponding work load and send back the results. The requester will get corresponding information and store the total delay in its map and finally emit into a signal for statistical analysis. 
 
 ## Stages
-Since the functions are event-driven in OMNeT++, MyVeinsApp.h and MyVeinsApp.cc provide us some basic function in advance such as **onBSM()**, **onWSM()**, **onWSA()**, **handleSelfMsg()**, **handlePositionUpdate()**. Among these we focus on **onWSM()** and **handleSelfMsg()**. The former is triggered when a node receives WSM; the latter, self message scheduled. In **onWSM()**, we decode the message and choose corresponding actions. When we need to schedule an event some time later or send messages out, we use **scheduleAt()** to call **handleSelfMsg()** after a specified time where different messages can be sent. Based on the two functions, we realize our framework which is similar to AVE framework. It consists of 5 stages: beaconing, job caching, discovery, scheduling and data transmission which are briefly described as follows. Refer to \[1\] to know more details.  
+Since the functions are event-driven in OMNeT++, MyVeinsApp.h and MyVeinsApp.cc provide us some basic function in advance such as **onBSM()**, **onWSM()**, **onWSA()**, **handleSelfMsg()**, **handlePositionUpdate()**. Among these we focus on **onWSM()** and **handleSelfMsg()**. The former is triggered when a node receives WSM; the latter, self message scheduled. In **onWSM()**, we decode the message and choose corresponding actions. When we need to schedule an event some time later or send messages out, we use **scheduleAt()** to call **handleSelfMsg()** after a specified time where different messages can be sent. Based on the two functions, we realize our framework which is similar to AVE framework. It consists of 5 stages: beaconing, job caching, discovery, scheduling and data transmission which are briefly described as follows. (Stages are realized respectively in **bea()**, **cac()**, **dis()**, **sch()**, **dat()**.) Refer to \[1\] to know more details.  
 
 ### 1. Beaconing
 Beaconing is a stage where beacons carrying the information of computing resources are periodically transmitted and received. Note that the beacons can be received by both processor and requester though here one node must be only one of them. 
@@ -48,11 +48,13 @@ Receivers (processors or requesters) identify the header 'B' of the WSM they rec
 
 ### 2. Job Caching
 #### 1) Phase in requester: generate jobs
-Like beaconing, requesters generate jobs continuously when job caching. The difference is that the generation follows Poisson Process (lambda is 5 by default). After first calling **generate_job()** in initialization, **handleSelfMsg()** and **generate_job()** call each other alternatively. In **generate_job()**, new jobs are generated and pushed into **job_queue** and an event is then scheduled to call **handleSelfMsg()**. When the size of **job_queue** is larger than NAI value + 1 and transmission is ended, the application enters discovery stage. 
+Like beaconing, requesters generate jobs continuously when job caching. The difference is that the generation follows Poisson Process (lambda is 5 by default). After first calling **generate\_job()** in initialization, **handleSelfMsg()** and **generate\_job()** call each other alternatively. In **generate\_job()**, new jobs are generated and pushed into **job\_queue** and an event is then scheduled to call **handleSelfMsg()**. When the size of **job\_queue** is larger than NAI value + 1 and transmission is ended, the application enters discovery stage. 
 
 ### 3. Discovery
-#### 1) Phase 0 in requester: request information
+In discovery stage, requesters send messages to request the computational information of processor for the scheduling of their jobs. Key messages sent by requesters and processors are EREQ (Edge REQuest message) and EREP (Edge REsPonse message). Refer to \[1\] to obtain details of their formats. 
 
+#### 1) Phase 0 in requester: request information
+After job caching ends, **send_EREQ()** is called to send EREQ. Here we write information from **job_queue** into EREQ, store them in **job_vector**
 
 #### 2) Phase in processor: make response
 
