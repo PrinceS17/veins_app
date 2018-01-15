@@ -47,7 +47,7 @@ Processors periodically send beacons in this phase. After initialization, the pa
 Receivers (processors or requesters) identify the header 'B' of the WSM they received and decode the beacons in the part of **onWSM()** to get the processor's ID, velocity, idle state and NAI table. From the information, they can update their own NAI table and calculate NAI value to estimate how well they can be served by local processors. 
 
 ### 2. Job Caching
-* **Phase in requester: generate jobs**
+#### 1) Phase in requester: generate jobs
 Like beaconing, requesters generate jobs continuously when job caching. The difference is that the generation follows Poisson Process (lambda is 5 by default). After first calling **generate_job()** in initialization, **handleSelfMsg()** and **generate_job()** call each other alternatively. In **generate_job()**, new jobs are generated and pushed into **job_queue** and an event is then scheduled to call **handleSelfMsg()**. When the size of **job_queue** is larger than NAI value + 1 and transmission is ended, the application enters discovery stage. 
 
 ### 3. Discovery
