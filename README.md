@@ -8,10 +8,10 @@ Autonomous Vehicular Edge (AVE) is a framework for edge computing on the road to
 
 One important difference is the assumption we make that one vehicle must be either requester (generate jobs and request computing resources) or processor (process jobs) , unlike that of AVE framework where every vehicle is both requester and processor. We suppose that only specific vehicles and platforms can provide computing resources in the near future. This difference causes a few changes of the stage, which will be explained in the following parts. 
 
-### 2, About the Softwares
-The framework is based on Veins, which is simulator for vehicular network. It combines SUMO, a traffic simulation platform, and OMNeT++, an IDE for network simulation and realizes a great amont of communication elements such as IEEE 802.11p, WAVE and two-ray interference channel, which makes it convenient to build a vehicular network framework and analyze the simulation results. \[2\]
+### 2, About the Software
+The framework is based on Veins, which is simulator for vehicular network. It combines SUMO, a traffic simulation platform, and OMNeT++, an IDE for network simulation and realizes a great amount of communication elements such as IEEE 802.11p, WAVE and two-ray interference channel, which makes it convenient to build a vehicular network framework and analyze the simulation results. \[2\]
 
-The framework works on both Linux and Windows systems and it is mainly built and tested on ubuntu 16.04 LTS. SUMO 0.30.0, OMNeT++ 5.1.1, Veins 4.6 are used for simulation. For details about installation of Veins, please refer to [Veins tutorial][1]. You can also get enough information of SUMO and OMNeT++ there. 
+The framework works on both Linux and Windows systems and it is mainly built and tested on Ubuntu 16.04 LTS. SUMO 0.30.0, OMNeT++ 5.1.1, Veins 4.6 are used for simulation. For details about installation of Veins, please refer to [Veins tutorial][1]. You can also get enough information of SUMO and OMNeT++ there. 
 
 [1]:http://veins.car2x.org/tutorial/
 
@@ -19,7 +19,7 @@ The framework works on both Linux and Windows systems and it is mainly built and
 ### 1. Messages: WaveShortMessage(WSM), WaveServiceAdvertisement(WSA) & BasicSafetyMessage (BSM)
 Different from the cMessage which general OMNeT++ application used, Veins encapsulates specific message classes according to Dedicated Short-Range Communications (DSRC) Standards. \[3\] There are 3 kinds of messages it uses, which are WaveShortMessage(WSM), WaveServiceAdvertisement(WSA) and BasicSafetyMessage (BSM). WSM is mainly used by us to send messages required by our framework. 
 
-Since many packets are directly sent from source to destination without routing in the vehicular environment, short messages are preferred to avoid great overhead. Therefore, WAVE Short Message Protocal (WSMP) is defined for more efficient 1-hop transmission and WSM is the packet using WSMP. Its head length ranges from 5 bytes to 20 bytes, which is far smaller than that of original IPV6 packets. WSA is the WSM which includes some DSRC service information and BSM is the WSM which includes some safety information like the current position and speed of the sender. 
+Since many packets are directly sent from source to destination without routing in the vehicular environment, short messages are preferred to avoid great overhead. Therefore, WAVE Short Message Protocol (WSMP) is defined for more efficient 1-hop transmission and WSM is the packet using WSMP. Its head length ranges from 5 bytes to 20 bytes, which is far smaller than that of original IPV6 packets. WSA is the WSM which includes some DSRC service information and BSM is the WSM which includes some safety information like the current position and speed of the sender. 
 
 To send a WSM, we assert a WaveShortMessage*, set its data (a string of at most 4KB) and schedule its transmission. When receiving a WSM (WSA, BSM), the program calls **onWSM()** (**onWSA()**, **onBSM()**) to process the packet. To identify various messages we use in different cases, we set several headers as follows: T (traffic message of original code), B (my beacon in the framework), Q (EREQ at discovery), P (EREP at discovery), D (data content at transmission), J (job brief of data).     
 
@@ -69,13 +69,13 @@ In this stage, the requester need to schedule every job to a processor to achiev
 According to the scheduling result, the requester sends data of jobs to corresponding processors and then receives the result and records the total delay.
 
 #### 1) Phase 0 in requester: send job brief & data
-Since actual data may consists of several WSMs (each time 100 KB by default), we call **send_data()** (overload for job brief) to send job brief, a few WSM packets to form a complete content. We put the properties of job such as work load, data size and result size into the WSM, which is our job brief and will tell processor how long the processing is and how large the result should be. Then we send both the job brief and the data. Since a WSM has a maximum size of 4 KB, we divide the whole data into some WSMs and add "ed" at the end of the last WSM. 
+Since actual data may consist of several WSMs (each time 100 KB by default), we call **send_data()** (overload for job brief) to send job brief, a few WSM packets to form a complete content. We put the properties of job such as work load, data size and result size into the WSM, which is our job brief and will tell processor how long the processing is and how large the result should be. Then we send both the job brief and the data. Since a WSM has a maximum size of 4 KB, we divide the whole data into some WSMs and add "ed" at the end of the last WSM. 
 
 #### 2) Phase in processor: receive & process job
 The processor receives job brief and data in **case 'J'** and **case 'D'** respectively. It gets job information from the brief and then imitates processing the job after receiving the WSM with "ed" by adding **current_task_time**. After that, it sends back the result.
 
 #### 3) Phase 1 in requester: get result
-Similar to 2), the requester receives result in **case 'D'** and records the delay calculated by current time and the starting time in the job. Then we emits the signal of delay or records it in the delay vector to visualize and analyse after running the program. 
+Similar to 2), the requester receives result in **case 'D'** and records the delay calculated by current time and the starting time in the job. Then we emit the signal of delay or records it in the delay vector to visualize and analyze after running the program. 
 
 ## References
 \[1\]  J. Feng, Z. Liu, C. Wu and Y. Ji, "[AVE: Autonomous Vehicular Edge Computing Framework with ACO-Based Scheduling][2]," in IEEE Transactions on Vehicular Technology, vol. 66, no. 12, pp. 10660-10675, Dec. 2017.
