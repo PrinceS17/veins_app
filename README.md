@@ -69,11 +69,13 @@ In this stage, the requester need to schedule every job to a processor to achiev
 According to the scheduling result, the requester sends data of jobs to corresponding processors and then receives the result and records the total delay.
 
 #### 1) Phase 0 in requester: send job brief & data
-
+Since actual data may consists of several WSMs (each time 100 KB by default), we call **send_data()** (overload for job brief) to send job brief, a few WSM packets to form a complete content. We put the properties of job such as work load, data size and result size into the WSM, which is our job brief and will tell processor how long the processing is and how large the result should be. Then we send both the job brief and the data. Since a WSM has a maximum size of 4 KB, we divide the whole data into some WSMs and add "ed" at the end of the last WSM. 
 
 #### 2) Phase in processor: receive & process job
+The processor receives job brief and data in **case 'J'** and **case 'D'** respectively. It gets job information from the brief and then imitates processing the job after receiving the WSM with "ed" by adding **current_task_time**. After that, it sends back the result.
 
 #### 3) Phase 1 in requester: get result
+Similar to 2), the requester receives result in **case 'D'** and records the delay calculated by current time and the starting time in the job. Then we emits the signal of delay or records it in the delay vector to visualize and analyse after running the program. 
 
 ## References
 \[1\]  J. Feng, Z. Liu, C. Wu and Y. Ji, "[AVE: Autonomous Vehicular Edge Computing Framework with ACO-Based Scheduling][2]," in IEEE Transactions on Vehicular Technology, vol. 66, no. 12, pp. 10660-10675, Dec. 2017.
