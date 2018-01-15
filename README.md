@@ -62,11 +62,14 @@ After identifing header 'Q' in WSM, we decode it in corresponding part in **onWS
 #### 3) Phase 1 in requester: collect information
 In **case 'P'** in **onWSM()**, the requester receiving EREP collocts the computing time of jobs and records them to its **job_vector**. Note that **job_vector** records all the jobs the node has generated while we only use the part whose bid is obtained. Therefore, we use **job_size** and **max_size** to record the number of jobs before and jobs of this round. When current time exceeds the time limit, program enters scheduling stage with these parameters.  
 
-### 4. Scehduling
-In this stage, the requester need to schedule every job to a processor to achieve a relatively low latency. 
+### 4. Scheduling
+In this stage, the requester need to schedule every job to a processor to achieve a relatively low latency. AVE framework uses ACO algorithm here to achieve a near optimal scheduling in a decentralized way. Because of our main focus on the vehicular network framework, we now realize random algorithm as a baseline for later study. The function **sch()** returns a **vector\<int\>** of the processor IDs for the jobs. 
 
 ### 5. Data Transmission
+According to the scheduling result, the requester sends data of jobs to corresponding processors and then receives the result and records the total delay.
+
 #### 1) Phase 0 in requester: send job brief & data
+
 
 #### 2) Phase in processor: receive & process job
 
