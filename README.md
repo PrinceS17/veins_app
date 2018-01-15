@@ -48,19 +48,22 @@ Receivers (processors or requesters) identify the header 'B' of the WSM they rec
 
 ### 2. Job Caching
 #### 1) Phase in requester: generate jobs
-Like beaconing, requesters generate jobs continuously when job caching. The difference is that the generation follows Poisson Process (lambda is 5 by default). After first calling **generate\_job()** in initialization, **handleSelfMsg()** and **generate\_job()** call each other alternatively. In **generate\_job()**, new jobs are generated and pushed into **job\_queue** and an event is then scheduled to call **handleSelfMsg()**. When the size of **job\_queue** is larger than NAI value + 1 and transmission is ended, the application enters discovery stage. 
+Like beaconing, requesters generate jobs continuously when job caching. The difference is that the generation follows Poisson Process (lambda is 5 by default). After first calling **generate_job()** in initialization, **handleSelfMsg()** and **generate_job()** call each other alternatively. In **generate_job()**, new jobs are generated and pushed into **job_queue** and an event is then scheduled to call **handleSelfMsg()**. When the size of **job_queue** is larger than NAI value + 1 and transmission is ended, the application enters discovery stage. 
 
 ### 3. Discovery
 In discovery stage, requesters send messages to request the computational information of processor for the scheduling of their jobs. Key messages sent by requesters and processors are EREQ (Edge REQuest message) and EREP (Edge REsPonse message). Refer to \[1\] to obtain details of their formats. 
 
 #### 1) Phase 0 in requester: request information
-After job caching ends, **send_EREQ()** is called to send EREQ. Here we write information from **job_queue** into EREQ, store them in **job_vector**
+After job caching ends, **send_EREQ()** is called to send EREQ. Here we write information from **job_queue** into EREQ, store them in **job_vector** and schedule self message to send it. 
 
 #### 2) Phase in processor: make response
+After identifing header 'Q' in WSM, we decode it in corresponding part in **onWSM()**. The node abandons the message when speed difference is too large, relays it when the requester is its 1 hop neighbor and send EREP to respond to the requester when compatible. In **send_EREP()** it calls, bid (work time) is calculated from the work load of the jobs and then sent as the main content of EREP. 
 
 #### 3) Phase 1 in requester: collect information
+In **case 'P'** in **onWSM()**, the requester receiving EREP collocts the computing time of jobs and records them to its **job_vector**. Note that **job_vector** records all the jobs the node has generated while we only use the part whose bid is obtained. Therefore, we use **job_size** and **max_size** to record the number of jobs before and jobs of this round. When current time exceeds the time limit, program enters scheduling stage with these parameters.  
 
 ### 4. Scehduling
+In this stage, the requester need to schedule every job to a processor to achieve a relatively low latency. 
 
 ### 5. Data Transmission
 #### 1) Phase 0 in requester: send job brief & data
