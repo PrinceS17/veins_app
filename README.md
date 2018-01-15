@@ -35,18 +35,24 @@ In our framework, **struct _NAI_**, an entry of the table, consists of idle stat
 To record the job after receiving data, we store the information of jobs in **map\<int, job\> _work\_info_**. Then the processor will process the job according to the corresponding work load and send back the results. The requester will get corresponding information and store the total delay in its map and finally emit into a signal for statistical analysis. 
 
 ## Stages
-Since the functions are event-driven in OMNeT++, MyVeinsApp.h and MyVeinsApp.cc provide us some basic function in advance such as **onBSM()**, **onWSM()**, **onWSA()**, **handleSelfMsg()**, **handlePositionUpdate()**. Among these we focus on **onWSM()** and **handleSelfMsg()**. The former is triggered when a node receives WSM; the latter, self message scheduled. In **onWSM()**, we decode the message and choose corresponding actions. When we need to schedule an event some time later or send messages out, we use **scheduleAt()** to call **handleSelfMsg()** after a specified time where different messages can be sent. Based on the two functions, we realize our framework which is similar to AVE framework. It consists of 5 stages: beaconing, job caching, discovery, scheduling and data transmission as follows.
+Since the functions are event-driven in OMNeT++, MyVeinsApp.h and MyVeinsApp.cc provide us some basic function in advance such as **onBSM()**, **onWSM()**, **onWSA()**, **handleSelfMsg()**, **handlePositionUpdate()**. Among these we focus on **onWSM()** and **handleSelfMsg()**. The former is triggered when a node receives WSM; the latter, self message scheduled. In **onWSM()**, we decode the message and choose corresponding actions. When we need to schedule an event some time later or send messages out, we use **scheduleAt()** to call **handleSelfMsg()** after a specified time where different messages can be sent. Based on the two functions, we realize our framework which is similar to AVE framework. It consists of 5 stages: beaconing, job caching, discovery, scheduling and data transmission which are briefly described as follows. Refer to \[1\] to know more details.  
 
 ### 1. Beaconing
-#### 1) Phase in processor: send beacons
+Beaconing is a stage where beacons carrying the information of computing resources are periodically transmitted and received. Note that the beacons can be received by both processor and requester though here one node must be only one of them. 
 
-#### 2) Phase in requester: receive beacons
+#### 1) Phase in sender: send beacons
+Processors periodically send beacons in this phase. After initialization, the part for sending beacons in **handleSelfMsg()** and **send_beacon()** call each other after every interval (1s by default). 
+
+#### 2) Phase in receiver: receive beacons
+Receivers (processors or requesters) identify the header 'B' of the WSM they received and decode the beacons in the part of **onWSM()** to get the processor's ID, velocity, idle state and NAI table. From the information, they can update their own NAI table and calculate NAI value to estimate how well they can be served by local processors. 
 
 ### 2. Job Caching
-* Phase in requester: generate jobs
+* **Phase in requester: generate jobs**
+Like beaconing, requesters generate jobs continuously when job caching. The difference is that the generation follows Poisson Process (lambda is 5 by default). After first calling **generate_job()** in initialization, **handleSelfMsg()** and **generate_job()** call each other alternatively. In **generate_job()**, new jobs are generated and pushed into **job_queue** and an event is then scheduled to call **handleSelfMsg()**. When the size of **job_queue** is larger than NAI value + 1 and transmission is ended, the application enters discovery stage. 
 
 ### 3. Discovery
 #### 1) Phase 0 in requester: request information
+
 
 #### 2) Phase in processor: make response
 
