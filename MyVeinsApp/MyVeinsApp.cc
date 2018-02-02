@@ -92,15 +92,13 @@ void MyVeinsApp::bea(WaveShortMessage* wsm, stringstream* ss_ptr = &ss_null)
     stringstream ss(ss_ptr->str());
     if(ss.str() == "")          // processor sending beacon
     {
-        // only for debug
-        EV << endl << "current time is "<< simTime().dbl() <<endl;
-        formal_out("send beacon...", 2);
+        formal_out("Processor: send beacon...", 2);
         naiTable.update();
         send_beacon(naiTable.generate_hop1());
     }
     else                    // beacon receiving by either processor or requester
     {
-        formal_out("my beacon...", 2);
+        formal_out("Requester: my beacon...", 2);
 
         int vehicleId;
         double vx, vy, vz;
@@ -113,7 +111,7 @@ void MyVeinsApp::bea(WaveShortMessage* wsm, stringstream* ss_ptr = &ss_null)
         if(curSpeed.distance(sourceSpeed) > speedLimit)
         {
             formal_out("Speed difference too large!", 3);
-            delete(wsm);
+            // delete(wsm);
             return;
         }
 
@@ -217,7 +215,7 @@ vector<int> MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_p
             if(curSpeed.distance(sourceSpeed) > speedLimit)                                      // compare the speed
             { 
                 formal_out("Speed difference too large!", 3);
-                delete(wsm);
+                // delete(wsm);
                 break;
             }
 
@@ -253,7 +251,9 @@ vector<int> MyVeinsApp::sch(vector<int> v0)
     formal_out("Entering scheduling phase!", 3);
     vector<job> temp;
     temp.assign(job_vector.begin() + job_size, job_vector.begin() + job_size + max_size);
-    return scheduling(temp, 0);
+    vector<int> res = scheduling(temp, 0);
+    res.emplace(res.begin(), max_size);
+    res.emplace(res.begin(), job_size);
 
 }
 
@@ -265,10 +265,15 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
         if(phase == 0)
         {
             idleState = false;
+            int job_size = serviceCar[0];
+            int max_size = serviceCar[1];           // seems no need
+            serviceCar.erase(serviceCar.begin(), serviceCar.begin() + 1);
+            
             for(int i = 0; i < serviceCar.size(); i ++)
-            {
-                job_vector[i].start = simTime().dbl();                            // start of delay
-                send_data(job_vector[i], serviceCar[i], 3, simTime());           
+            {   
+                job_vector[job_size + i].start = simTime().dbl();                            // start of delay
+                send_data(job_vector[job_size + i], serviceCar[i], 3, simTime());           
+                work_info.insert(pair<int, job>(serviceCar[i], job_vector[job_size + i]));
             }
             idleState = true;   
             TxEnd = true;
@@ -293,6 +298,7 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
                 // emit(sig, job_delay);                                                              // use signal to record the delay of each job
                 // recordScalar("job_delay", job_delay);
                 delayVec.record(job_delay);  
+                work_info.erase(vehicleId);
             }
 
         }
@@ -554,7 +560,7 @@ void MyVeinsApp::initialize(int stage) {
         computing_speed = 1e3;                          // can be specified by our demand
         idleState = true;
         TxEnd = true;
-        naiTable.push_back(myId, idleState, 0, simTime() + my_bc_interval);
+        naiTable.push_back(myId, idleState, 0, simTime() +  my_bc_interval);       // my ID should never expired? 200 correctly
         // sig = registerSignal("sig");
 
     }
@@ -606,19 +612,35 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
     stringstream ss_delay;
     ss_delay<<"last delay: "<< job_delay.dbl(); 
 
-    char* wdata = new char[strlen(wsm->getWsmData()) - 1];        // data without my header "T", "B" and "D"
-    EV << "strlen of wsm data: " << strlen(wsm->getWsmData()) << endl;
-    strcpy(wdata, wsm->getWsmData() + 1);                               // need testing !!!
+    if(NULL == wsm->getWsmData()) {formal_out("Error: void pointer!", 1); return;}              // check if void pointer
+    if(strlen(wsm->getWsmData()) <= 1) {formal_out("Error: receive too little data!", 1); return;}       // check data length    
+    
+    /*
+    // also right, but a little complicated
+    char* wdata = new char[strlen(wsm->getWsmData())  ];        // data without my header "T", "B" and "D"
+    strcpy(wdata, wsm->getWsmData() + 1);                               // need testing !!!       
     stringstream ss;
-    ss << string(wdata);    
-
+    ss << string(wdata); 
+    */
+    
+    const char* wdata = string(wsm->getWsmData() + 1).c_str();
+    stringstream ss;
+    ss << wsm->getWsmData() + 1;
+    
+    
     /*
     char header;
     stringstream ss;
     ss << string(wsm->getWsmData());
     ss >> header;
+    
      */
  
+    // debug only
+    // if(wsm->getWsmData()[0] != 'B') return;
+    
+    
+    
     switch(wsm->getWsmData()[0]) {
     case 'T':  {  // original code for traffic information, unchanged
         formal_out("traffic info...", 2);
@@ -658,11 +680,11 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
             serviceCar = sch(v0);    
         else break;
 
-      //  dat(0, ss, wsm, serviceCar);                     // enter data transmission phase based on service car
+        dat(0, ss, wsm, serviceCar);                     // enter data transmission phase based on service car
         break;
     }
     case 'J':{
-      //  dat(0, ss, wsm);
+        dat(0, ss, wsm);
         break;
     }      
     case 'D': {  // data
@@ -674,11 +696,14 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
             break;                
         }
 
-      //  dat(1, ss, wsm);
+        dat(1, ss, wsm);
     }
 
     default: ;
     }
+
+    // delete(wsm);                // added, Feb 2
+    
 }
 
 void MyVeinsApp::onWSA(WaveServiceAdvertisment* wsa) {
@@ -704,6 +729,18 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
     formal_out("Handling self message...", 1);
 
     if (WaveShortMessage* wsm = dynamic_cast<WaveShortMessage*>(msg)) {         // if the pointer exists or not? I think most wsm case is this one?
+        
+        // debug only
+        /*
+        if(msg->getKind() == GENERATE_JOB_EVT && job_queue.size() > naiTable.value + 1 && TxEnd)
+        {
+            t_disc = simTime().dbl();               // update the begin time of discovery
+            formal_out("Job caching end!", 2);      // avoid entering discovery stage, then shall no data transmission
+            return;
+        }*/
+
+        
+        
         switch(msg->getKind()) {
         case SEND_DATA_EVT:
         {
@@ -711,14 +748,13 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
 
             //not send the wsm for several times like traffic update
             sendDown(wsm->dup());                 // should consider resend or not?
-            delete(wsm);
             if(current_task_time < simTime())     // maybe here when the requestor finishing sending data  
                 idleState = true;
             break;
         }
         case SEND_MY_BC_EVT:
         {
-            bea(wsm);          
+            bea(wsm);
             break;
         }
         case GENERATE_JOB_EVT:
@@ -731,10 +767,10 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
                 t_disc = simTime().dbl();   // update the begin time of discovery
             }
             cac();
-
             break;
         }
-        default:
+        default: sendDown(wsm->dup());
+        /*
         {
             //send this message on the service channel until the counter is 3 or higher.
             //this code only runs when channel switching is enabled                  // what's it?
@@ -750,8 +786,11 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
             else {
                 scheduleAt(simTime()+1, wsm);
             }
+        }*/
         }
-        }
+        
+        delete(wsm);        // added at the very end, Feb 2
+        
     }
     else {
         BaseWaveApplLayer::handleSelfMsg(msg);
