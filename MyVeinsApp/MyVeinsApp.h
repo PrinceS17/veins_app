@@ -24,6 +24,8 @@
 #include <omnetpp.h>
 #include <cstdlib>
 #include <map>
+#include <vector>
+#include <algorithm>
 #include <sstream>
 #include "veins/modules/application/ieee80211p/BaseWaveApplLayer.h"
 
@@ -42,7 +44,7 @@ using namespace std;
 
 // this is a type of node
 enum enum_type {PROCESSOR, REQUESTER};
-enum state_type {BEA, CAC, DIS, SCH, DAT};
+enum state_type {OFF, BEA, CAC, DIS, SCH, DAT};
 
 int max_num_neighbor = 50;              // follow AVE paper
 double phi = 0.8;                       // for NAI calculation
@@ -109,7 +111,8 @@ public:
         if(NAI_map.find(vehicleId) != NAI_map.end())        // ID exists in table
         {
             NAI_map.erase(vehicleId);                       // suppose that must be the 1st entry to be removed because it's earliest
-            NAI_vector.pop_back();                          // otherwise we have to look through all entries: may cause problem
+            // NAI_vector.pop_back();                          // otherwise we have to look through all entries: may cause problem, yes it caused...
+            NAI_vector.erase(std::find(NAI_vector.begin(), NAI_vector.end(), vehicleId));
             length --;
             return true;
         }
@@ -165,10 +168,10 @@ public:
 
     void update()                // delete expire entries and calculate NAI value
     {
-        // should only for debug
-                EV <<"length = "<< length <<endl;
-                for(int i = 0; i < length; i ++)
-                    EV <<"  No. "<< i <<", id: "<< NAI_vector.at(i)<<" , # hop: "<< NAI_map[NAI_vector.at(i)].hopNum << endl;
+        // debug only
+        EV <<"NAI length = "<< length <<endl;
+        for(int i = 0; i < length; i ++)
+            EV <<"  No. "<< i <<", id: "<< NAI_vector.at(i)<<" , # hop: "<< NAI_map[NAI_vector.at(i)].hopNum << endl;
                    
      
         for(int i = 0; i < length; i ++)
@@ -202,10 +205,11 @@ class MyVeinsApp : public BaseWaveApplLayer {
         double computing_speed;         // unified, U(1,2) for workload
         bool idleState;                 // another name of ifIdle, in requester: false at data transmission; in processor: false when processing
         NAI_table naiTable;
+        state_type current_state;        // state like bea, cac...
         
         // my statistic
-        cOutVector delayVec;
-        // simsignal_t sig;
+        //cOutVector delayVec;
+        simsignal_t sig;
 
     protected:
         virtual void onBSM(BasicSafetyMessage* bsm);
@@ -216,19 +220,20 @@ class MyVeinsApp : public BaseWaveApplLayer {
         virtual void handlePositionUpdate(cObject* obj);
 
         // my own function
-        virtual void send_EREP(int vehicleId, int rcvId, stringstream &EREQ);
+        virtual void send_EREP(int rcvId, stringstream &EREQ);
         virtual void send_EREQ(std::queue<job> job_queue, double job_time);
         virtual void generate_job(double lambda, int data_size, int result_size, double workload);
         virtual void send_beacon(std::vector<int> hop1_Neighbor);
         virtual vector<int> scheduling(vector<job> job_vector, int type);
         virtual void send_data(int size, int rcvId, int serial, simtime_t time);
         virtual void send_data(job myJob, int rcvId, int serial, simtime_t time);
+        virtual void local_process(queue<job> job_queue);
         
         // state
-        virtual void bea(WaveShortMessage* wsm, stringstream* ss_ptr );     // beaconing state, P: start in handleSelfMsg() and call send_beacon()            
-        virtual void cac();     // job caching state, R: start in handleSelfMsg(), call generate_job() to push the jobs in queue
-        virtual vector<int> dis(int phase, WaveShortMessage* wsm , stringstream* ss_ptr );     // discovery state, R: start send_EREQ when cac ended, and process EREP in 'P' at last; P: process EREQ in 'Q' and call send_EREP()
-        virtual vector<int> sch(vector<int> v0);     // scheduling state, R: call scheduling()
+        virtual void bea(WaveShortMessage* wsm, stringstream* ss_ptr );                                    // beaconing state, P: start in handleSelfMsg() and call send_beacon()            
+        virtual void cac();                                                                                // job caching state, R: start in handleSelfMsg(), call generate_job() to push the jobs in queue
+        virtual vector<int> dis(int phase, WaveShortMessage* wsm , stringstream* ss_ptr );                 // discovery state, R: start send_EREQ when cac ended, and process EREP in 'P' at last; P: process EREQ in 'Q' and call send_EREP()
+        virtual vector<int> sch(vector<int> v0);                                                           // scheduling state, R: call scheduling()
         virtual void dat(int phase, stringstream &ss, WaveShortMessage* wsm , vector<int> serviceCar);     // data transmission state, R: call send_data() in 'P' and receive data in 'D'until finished; P: receive data and process in 'J' and 'D'
     
 
