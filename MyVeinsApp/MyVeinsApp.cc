@@ -59,6 +59,7 @@ double rtd = 0.05;           // 50 ms
 double t_disc = 0;
 double speedLimit = 15;      // 15 m/s
 double my_bc_interval = 1;   // 1 s, same as the BSM period
+double ereq_interval = 0.02; // compared to rtd
 
 bool ifFirst = true;
 double t_end;                // for end of caching
@@ -168,9 +169,9 @@ void MyVeinsApp::cac()
 
 }
 
-vector<int> MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_ptr = &ss_null)
+void MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_ptr = &ss_null)
 {
-    current_state = DIS;
+    if(current_state < DISQ) current_state = DISQ;
     stringstream ss(ss_ptr->str());
     int job_size = -1, max_size = -1;
     vector<int> v0;
@@ -187,7 +188,8 @@ vector<int> MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_p
         else                // end discovery by storing the info from EREP
         {
             formal_out("EREP...", 2);
-
+            current_state = DISP;
+            
             int vehicleId;
             ss>> vehicleId >> job_size >> max_size; 
 
@@ -199,17 +201,39 @@ vector<int> MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_p
                 break;
             }
             
+            if(wsm->getRecipientAddress() != myId) break;                          // message for other nodes
+            
             formal_out("Get bid information...", 3);
-            if(wsm->getRecipientAddress() == myId)                                     // if this EREP is for the node
+            for(int i = job_size; i < job_size + max_size; i ++)                   // obtain correct position
             {
-                for(int i = job_size; i < job_size + max_size; i ++)                   // obtain correct position
-                {
-                    double bid;
-                    ss>> bid;
-                    job_vector[i].bid.insert(pair<int, double>(vehicleId, bid));       // insert bid information for later scheduling
-                }        
+                double bid;
+                ss>> bid;
+                job_vector[i].bid.insert(pair<int, double>(vehicleId, bid));       // insert bid information for later scheduling
+            }       
+            
+            vector<int> v0;
+            v0.push_back(job_size);
+            v0.push_back(max_size);
+            if(v0.at(0) < 0 || v0.at(1) < 0) 
+            {
+                formal_out("Error: no job size, max size stored in vector v0!", 1);
+                exit(0);
             }
-
+            vector<int> serviceCar;
+            if( simTime().dbl() - t_disc >= rtd)            // if time expired, enter scheduling state
+            {
+                serviceCar = sch(v0);    
+                dat(0, ss, wsm, serviceCar);                // enter data transmission phase based on service car
+            }
+            else 
+            {
+                WaveShortMessage * temp = new WaveShortMessage();
+                temp->setKind(ENTER_SCH_EVT);
+                stringstream ss;
+                ss << v0[0] << " " << v0[1] << endl;        // carry v0 vector
+                temp->setWsmData(ss.str().c_str());
+                scheduleAt(t_disc + rtd, temp);             // type transition from double to simtime_t?
+            }
         }
         break;
     case PROCESSOR:
@@ -246,9 +270,6 @@ vector<int> MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_p
             break;
     default: ;
     }               
-    v0.push_back(job_size);
-    v0.push_back(max_size);
-    return v0;
     
 }
 
@@ -268,7 +289,7 @@ vector<int> MyVeinsApp::sch(vector<int> v0)
 
 void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<int> serviceCar = vector<int>())
 {
-    current_state = DAT;
+    if(current_state == SCH) current_state = DAT;       // ? right
     
     switch(node_type)
     {
@@ -287,6 +308,7 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
             }
             idleState = true;   
             TxEnd = true;
+            current_state = CAC;
         }
         else
         {
@@ -301,9 +323,10 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
             
             if(temp == "ed")
            {
-                EV<<"--- Finish receiving result data from sender "<< vehicleId <<" !\n";    // maybe add time calculation later
                 myJob.delay = simTime() - myJob.start;
                 job_delay = myJob.delay;
+                string str = "Finish receving result from " + to_string(vehicleId) + " ; delay = " + to_string(job_delay.dbl());
+                formal_out(str.c_str(), 1);
 
                 emit(sig, job_delay);                                                              // use signal to record the delay of each job
                 // recordScalar("job_delay", job_delay);
@@ -358,6 +381,7 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
                 work_info.erase(vehicleId);
 
             }
+            current_state = BEA;
         }
     default: ;
 
@@ -390,6 +414,29 @@ void MyVeinsApp::local_process(queue<job> job_queue)
         // delayVec.record(job_delay);  
         
         // whether do we need to push to job vector?
+    }
+    
+}
+
+void MyVeinsApp::local_process(vector<job> job_vec)
+{
+    formal_out("locally process for EREQ...", 3);
+    // for(int i = 0; i < job_vec.size(); i ++)
+    for(auto myJob:job_vec)
+    {
+        // job myJob = job_vec[i];
+        if(current_task_time > simTime())
+            current_task_time += (double) myJob.workload / computing_speed;
+        else
+        {
+            idleState = false;
+            current_task_time = simTime() + (double) myJob.workload / computing_speed;
+        }
+        // recored the final delay
+        myJob.delay = current_task_time - myJob.start;
+        job_delay = myJob.delay;
+        emit(sig, job_delay);  
+        
     }
     
 }
@@ -429,7 +476,7 @@ void MyVeinsApp::send_EREQ(queue<job> job_queue, double job_time)
     scheduleAt(simTime(), myEREQ->dup());
   
     myEREQ->setKind(CHECK_EREQ_EVT);
-    scheduleAt(simTime() + my_bc_interval, myEREQ);             // check if EREQ needs to be resent
+    scheduleAt(simTime() + ereq_interval, myEREQ);             // check if EREQ needs to be resent
         
     
     
@@ -525,8 +572,9 @@ vector<int> MyVeinsApp::scheduling(vector<job> job_vector, int type)            
         switch(type)
         {
         case 0:             // choose randomly
-            ri = rand() % static_cast<int>(bid.size());             // cause error code 136 if bid.size() = 0
-            // ri = 10000 % static_cast<int>(bid.size());             // for debug, eliminate the probability
+            if(bid.size()) ri = rand() % static_cast<int>(bid.size());     // cause error code 136 if bid.size() = 0
+            else {formal_out("Error: bid size is 0!\n\n\n", 1); exit(0);}
+            // ri = 10000 % static_cast<int>(bid.size());                  // for debug, eliminate the probability
 
             serviceCar.push_back(bid_vec[ri].first);      
             break;
@@ -562,7 +610,10 @@ void MyVeinsApp::send_data(int size, int rcvId, int serial, simtime_t time)     
         data->setKind(SEND_DATA_EVT);           // cooperate with handleSelfMsg
         data->setWsmLength(l);
         data->setWsmData(ss.str().c_str());
-        scheduleAt(time + i*slot, data);        // send each wsm in every slot, also could be other method
+        
+        // scheduleAt(time + i*slot, data);        // send each wsm in every slot, also could be other method
+        scheduleAt(time, data);
+        
         if(current_task_time <= simTime())      // if processor becomes idle after sending data
             idleState = true;
     }
@@ -598,7 +649,7 @@ void MyVeinsApp::initialize(int stage) {
         sentMessage = false;
         lastDroveAt = simTime();
         currentSubscribedServiceId = -1;
-        srand((unsigned)time(0));
+        // srand((unsigned)time(0));
         node_type = rand() < 0.5*RAND_MAX? REQUESTER:PROCESSOR;              // can be initialized by the position or other properties of nodes
         
         current_task_time = 0;
@@ -694,28 +745,7 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
     }
     case 'P':{
         if(node_type == PROCESSOR) break;
-        vector<int> v0 = dis(1, wsm, &ss);
-        if(v0.at(0) < 0 || v0.at(1) < 0) 
-        {
-            formal_out("Error: no job size, max size stored in vector v0!", 1);
-            exit(0);
-        }
-        vector<int> serviceCar;
-        if( simTime().dbl() - t_disc >= rtd)        // if time expired, enter scheduling state
-        {
-            serviceCar = sch(v0);    
-            dat(0, ss, wsm, serviceCar);                // enter data transmission phase based on service car
-        }
-        else 
-        {
-            WaveShortMessage * temp = new WaveShortMessage();
-            temp->setKind(ENTER_SCH_EVT);
-            stringstream ss;
-            ss << v0[0] << " " << v0[1] << endl;        // carry v0 vector
-            temp->setWsmData(ss.str().c_str());
-            scheduleAt(t_disc + rtd, temp);             // type transition from double to simtime_t?
-        }
-
+        dis(1, wsm, &ss);
         break;
     }
     case 'J':{
@@ -816,13 +846,27 @@ void MyVeinsApp::handleSelfMsg(cMessage* msg) {
         }
         case CHECK_EREQ_EVT:
         {
-            string str = "check EREQ ... current state is " + to_string((int)current_state);
+            string temp = current_state == DISP? "DISP": (current_state == DISQ? "DISQ":"not DIS: " + to_string(current_state));
+            string str = "check EREQ ... current state is " + temp;
             formal_out(str.c_str(), 2);
-            if(current_state == DIS)
+            if(current_state == DISQ)
             {
-                scheduleAt(simTime() + my_bc_interval, wsm->dup());     // another check
-                wsm->setKind(0);
-                scheduleAt(simTime() + slot, wsm->dup());               // resend EREQ
+                if(simTime() < t_disc +rtd)
+                {
+                    if(simTime() + ereq_interval < t_disc + rtd)                    // another check for EREQ if time allows     
+                        scheduleAt(simTime() + ereq_interval, wsm->dup());
+                    wsm->setKind(0);
+                    scheduleAt(simTime() + slot, wsm->dup());                       // send EREQ before t_disc+rtd
+                }
+                else 
+                {                                                                   // read job_size and max_size from EREQ
+                    int vehicleId, job_size, max_size;
+                    double vx, vy, vz;
+                    stringstream ss(wsm->getWsmData());
+                    ss >> vehicleId >> vx >> vy >> vz >> job_size >> max_size;       
+                    vector<job> job2proc(job_vector.begin() + job_size, job_vector.begin() + job_size + max_size);
+                    local_process(job2proc);
+                }
             }
             break;
         }
