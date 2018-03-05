@@ -229,6 +229,7 @@ class MyVeinsApp : public BaseWaveApplLayer {
         virtual void send_data(job myJob, int rcvId, int serial, simtime_t time);
         virtual void local_process(queue<job> job_queue);
         virtual void local_process(vector<job> job_vec);
+        virtual void relay(WaveShortMessage* wsm);
         
         // state
         virtual void bea(WaveShortMessage* wsm, stringstream* ss_ptr );                                    // beaconing state, P: start in handleSelfMsg() and call send_beacon()            

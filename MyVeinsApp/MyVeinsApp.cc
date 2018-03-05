@@ -92,6 +92,15 @@ void formal_out(const char * str, int lv)   // use output to debug
 
 }
 
+void MyVeinsApp::relay(WaveShortMessage* wsm)
+{
+    wsm->setSenderAddress(myId);
+    wsm->setSerial(wsm->getSerial() +1);
+    sendDown(wsm->dup());
+    string str = "Relay! Current serial is " + to_string(wsm->getSerial());
+    formal_out(str.c_str(), 3);
+}
+
 void MyVeinsApp::bea(WaveShortMessage* wsm, stringstream* ss_ptr = &ss_null)
 {
     if(current_state == OFF) current_state = BEA;
@@ -171,7 +180,7 @@ void MyVeinsApp::cac()
 
 void MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_ptr = &ss_null)
 {
-    if(current_state < DISQ) current_state = DISQ;
+    
     stringstream ss(ss_ptr->str());
     int job_size = -1, max_size = -1;
     vector<int> v0;
@@ -180,6 +189,7 @@ void MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_ptr = &s
     case REQUESTER:
         if(phase == 0)      // begin discovery by sending EREQ
         {
+            if(current_state < DISQ) current_state = DISQ;
             // naiTable.update();
             send_EREQ(job_queue, job_time);     // queue popped in send_EREQ
             job_time = 0;
@@ -188,21 +198,19 @@ void MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_ptr = &s
         else                // end discovery by storing the info from EREP
         {
             formal_out("EREP...", 2);
-            current_state = DISP;
-            
             int vehicleId;
             ss>> vehicleId >> job_size >> max_size; 
 
             if(naiTable.find(wsm->getRecipientAddress()) && naiTable.NAI_map[wsm->getRecipientAddress()].hopNum == 1)       // relay
             {
                 formal_out("Forward EREP...", 3);
-                wsm->setSenderAddress(myId);
-                sendDown(wsm->dup());
+                relay(wsm);
                 break;
             }
             
             if(wsm->getRecipientAddress() != myId) break;                          // message for other nodes
             
+            current_state = DISP;            
             formal_out("Get bid information...", 3);
             for(int i = job_size; i < job_size + max_size; i ++)                   // obtain correct position
             {
@@ -239,6 +247,7 @@ void MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_ptr = &s
     case PROCESSOR:
         if(phase == 0)
         {
+            if(current_state < DISQ) current_state = DISQ;
             formal_out("EREQ...", 2);
 
             int vehicleId;
@@ -249,22 +258,18 @@ void MyVeinsApp::dis(int phase, WaveShortMessage* wsm, stringstream* ss_ptr = &s
             if(curSpeed.distance(sourceSpeed) > speedLimit)                                      // compare the speed
             { 
                 formal_out("Speed difference too large!", 3);
-                // delete(wsm);
                 break;
             }
 
             if(naiTable.find(vehicleId) && naiTable.NAI_map[vehicleId].hopNum == 1)              // 1 hop node forward EREQ
             {
                 formal_out("Forward EREQ...", 3);
-                wsm->setSenderAddress(myId);
-                sendDown(wsm->dup());
+                relay(wsm);
                 break;
             }
             bool compatibility = rand() < 0.75*RAND_MAX? true:false;                             // consider compatibility
-            if(compatibility)
-                send_EREP(vehicleId, ss);   
+            if(compatibility) send_EREP(vehicleId, ss);   
             else formal_out("Not compatible!", 3);
-
         }
         else
             break;
@@ -280,8 +285,7 @@ vector<int> MyVeinsApp::sch(vector<int> v0)
     
     // enter scheduling phase and then begin data transmission
     formal_out("Entering scheduling phase!", 3);
-    vector<job> temp;
-    temp.assign(job_vector.begin() + job_size, job_vector.begin() + job_size + max_size);
+    vector<job> temp(job_vector.begin() + job_size, job_vector.begin() + job_size + max_size);
     vector<int> res = scheduling(temp, 0);
     res.emplace(res.begin(), job_size);
     return res; 
@@ -289,13 +293,14 @@ vector<int> MyVeinsApp::sch(vector<int> v0)
 
 void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<int> serviceCar = vector<int>())
 {
-    if(current_state == SCH) current_state = DAT;       // ? right
     
     switch(node_type)
     {
     case REQUESTER:
         if(phase == 0)
         {
+            if(current_state == SCH) current_state = DAT;       // ? right
+                
             idleState = false;
             int job_size = serviceCar[0];
             serviceCar.erase(serviceCar.begin());
@@ -303,7 +308,7 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
             for(int i = 0; i < serviceCar.size(); i ++)
             {   
                 // job_vector[job_size + i].start = simTime().dbl();                            // not reasonable
-                send_data(job_vector[job_size + i], serviceCar[i], 3, simTime());           
+                send_data(job_vector[job_size + i], serviceCar[i], 0, simTime());           
                 work_info.insert(pair<int, job>(serviceCar[i], job_vector[job_size + i]));
             }
             idleState = true;   
@@ -313,9 +318,20 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
         else
         {
             formal_out("data received...", 2);
-            int vehicleId;                      // Id of the requester
+            int vehicleId;                                  // Id of the requester
             ss>> vehicleId;
-            job myJob = work_info[vehicleId];   // get info of current job 
+            if(vehicleId == myId)                           // if receiving my message, must be out of date
+            {
+                formal_out("Discard self message!", 1);
+                break;
+            }
+            if(wsm->getRecipientAddress() != myId)          // message not for me
+            {
+                relay(wsm);
+                break;
+            }
+            
+            job myJob = work_info[vehicleId];                // get info of current job 
 
             ss.seekg(-2, ss.end);
             string temp; 
@@ -333,34 +349,52 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
                 // delayVec.record(job_delay);  
                 work_info.erase(vehicleId);
             }
-
         }
         break;
     case PROCESSOR:
         if(phase == 0)
         {
             // should decode wdata to get dataSize, resultSize and workload here and send back result of the size
-            if(wsm->getRecipientAddress() != myId) 
-            {
-                wsm->setSenderAddress(myId);
-                sendDown(wsm->dup());
-                break;            
-            }
-
-            // if processor: then use work_info to process; if requester: use it to calculate delay
-            formal_out("job brief...", 2);
-            job myJob;
             int vehicleId;
-            ss>> vehicleId >> myJob.data_size >> myJob.result_size >> myJob.workload >> myJob.utility >> myJob.bid[myId] >> myJob.start;        // index of bid doesn't matter
-            work_info.insert(pair<int, job>(vehicleId, myJob));                                                // store source Id and the job in map!!!
+            ss>> vehicleId; 
+            if(vehicleId == myId)                           // if receiving my message, out of date
+            {
+                formal_out("Discard self message!", 1);
+                break;
+            }
+            if(wsm->getRecipientAddress() != myId)          // message not for me
+            {
+                relay(wsm);
+                break;
+            }
+            
+            if(current_state < DAT) current_state = DAT;       // ? right
+                
+            // if processor: then use work_info to process; if requester: use it to calculate delay
+            formal_out("job brief...", 2);            
+            job myJob;
+            ss>> myJob.data_size >> myJob.result_size >> myJob.workload >> myJob.utility >> myJob.bid[myId] >> myJob.start;        // index of bid doesn't matter
+            work_info.insert(pair<int, job>(vehicleId, myJob));                                                                    // store source Id and the job in map!!!
 
         }
         else
         {
             formal_out("data received...", 2);
-            int vehicleId;                      // Id of the requester
+            int vehicleId;                                  // Id of the requester
             ss>> vehicleId;
-            job myJob = work_info[vehicleId];   // get info of current job 
+            if(vehicleId == myId)                           // if receiving my message, out of date
+            {
+                formal_out("Discard self message!", 1);
+                break;
+            }
+            if(wsm->getRecipientAddress() != myId)          // message not for me
+            {
+                relay(wsm);
+                break;
+            }
+            
+            if(current_state < DAT ) current_state = DAT;   // ? OK for process
+            job myJob = work_info[vehicleId];               // get info of current job 
             
             ss.seekg(-2, ss.end);
             string temp; 
@@ -377,7 +411,7 @@ void MyVeinsApp::dat(int phase, stringstream &ss, WaveShortMessage* wsm, vector<
                 }
 
                 // send back result data
-                send_data(myJob.result_size, vehicleId, 3, current_task_time);
+                send_data(myJob.result_size, vehicleId, 0, current_task_time);
                 work_info.erase(vehicleId);
 
             }
@@ -505,13 +539,8 @@ void MyVeinsApp::send_EREP(int rcvId, stringstream &EREQ)
 
     // send to rcvId
     WaveShortMessage * myEREP = new WaveShortMessage();
-    populateWSM(myEREP, rcvId, 3);
+    populateWSM(myEREP, rcvId);
     myEREP->setWsmData(EREP.str().c_str());
-    
-    /* ???
-    populateWSM(myEREP);
-    myEREP->setRecipientAddress(rcvId);
-    */
     scheduleAt(simTime(), myEREP);
 
 
@@ -699,6 +728,13 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         formal_out((temp + "... for short").c_str(), 1);
     }
     
+    // discard 3-hop message or self message
+    if(wsm->getSerial() >= 3) 
+    {
+        formal_out("Discard 3-hop message!", 1);
+        return;
+    }
+    
     // try to display the last delay on the canvas
     stringstream ss_delay;
     ss_delay<<"last delay: "<< job_delay.dbl(); 
@@ -723,14 +759,13 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         formal_out("traffic info...", 2);
 
         findHost()->getDisplayString().updateWith("r=16,green");
-
         if (mobility->getRoadId()[0] != ':') traciVehicle->changeRoute(wdata, 9999);
         if (!sentMessage) {
             sentMessage = true;
             //repeat the received traffic update once in 2 seconds plus some random delay
             wsm->setSenderAddress(myId);
             wsm->setSerial(3);
-            scheduleAt(simTime() + 2 + 5*slot, wsm->dup());
+            scheduleAt(simTime() + 2 + 10*slot, wsm->dup());
         }
         break;
     }
@@ -748,24 +783,12 @@ void MyVeinsApp::onWSM(WaveShortMessage* wsm) {
         dis(1, wsm, &ss);
         break;
     }
-    case 'J':{
-        if(wsm->getRecipientAddress() != myId)
-        {
-            wsm->setSenderAddress(myId);
-            sendDown(wsm->dup());
-            break;
-        }
+    case 'J':{   // job brief
+        if(node_type == REQUESTER) break;
         dat(0, ss, wsm);
         break;
     }      
     case 'D': {  // data
-        // should decode wdata to get dataSize, resultSize and workload here and send back result of the size
-        if(wsm->getRecipientAddress() != myId) 
-        {
-            wsm->setSenderAddress(myId);
-            sendDown(wsm->dup());
-            break;                
-        }
         dat(1, ss, wsm);
     }
 
