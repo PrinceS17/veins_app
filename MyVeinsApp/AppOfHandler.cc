@@ -27,6 +27,8 @@
 #include "AppOfHandler.h"
 using namespace std;
 
+// typedef void (*fType)(WaveShortMessage *);                      // def fType for handler map
+
 // kind for self-message
 #define SEND_DATA_EVT 2
 #define SEND_MY_BC_EVT 3
@@ -624,26 +626,27 @@ void AppOfHandler::initialize(int stage) {
         WaveShortMessage* ini = new WaveShortMessage();
         if(node_type == PROCESSOR)
         {
-            Handler[onB] = handleBeacon;
-            Handler[onT] = handleTraffic;
+            // test
+            Handler[onB] = &AppOfHandler::handleBeacon;
+            Handler[onT] = &AppOfHandler::handleTraffic;
 
-            Handler[SEND_MY_BC_EVT] = sendBeacon;  
-            Handler[onQ] = processEREQ;
-            Handler[onJ] = processJobBrief;
-            Handler[onD] = processData;
+            Handler[SEND_MY_BC_EVT] = &AppOfHandler::sendBeacon;  
+            Handler[onQ] = &AppOfHandler::processEREQ;
+            Handler[onJ] = &AppOfHandler::processJobBrief;
+            Handler[onD] = &AppOfHandler::processData;
             
             sendBeacon(ini); 
         }
         else
         {
-            Handler[onB] = handleBeacon;
-            Handler[onT] = handleTraffic;
+            Handler[onB] = &AppOfHandler::handleBeacon;
+            Handler[onT] = &AppOfHandler::handleTraffic;
 
-            Handler[GENERATE_JOB_EVT] = handleCache;
-            Handler[CHECK_EREQ_EVT] = checkEREQ;
-            Handler[onP] = handleDISP;
-            Handler[ENTER_SCH_EVT] = sendData;
-            Handler[onD] = handleResultData;
+            Handler[GENERATE_JOB_EVT] = &AppOfHandler::handleCache;
+            Handler[CHECK_EREQ_EVT] = &AppOfHandler::checkEREQ;
+            Handler[onP] = &AppOfHandler::handleDISP;
+            Handler[ENTER_SCH_EVT] = &AppOfHandler::sendData;
+            Handler[onD] = &AppOfHandler::handleResultData;
 
             generateJob(ini);              // virtual job, to starting normal job caching
             t_disc = simTime().dbl();
@@ -656,7 +659,7 @@ void AppOfHandler::onWSM(WaveShortMessage* wsm) {
     //code for handling the message goes here, see TraciDemo11p.cc for examples, 
     
     if(Handler.find(wsm->getKind()) != Handler.end())       // cannot find => type not maching
-        Handler[wsm->getKind()](wsm);
+        (this->*Handler[wsm->getKind()])(wsm);
 }
 
 void AppOfHandler::handleSelfMsg(cMessage* msg) {
@@ -666,12 +669,13 @@ void AppOfHandler::handleSelfMsg(cMessage* msg) {
     formal_out("Handling self message...", 1);
     if (WaveShortMessage* wsm = dynamic_cast<WaveShortMessage*>(msg)) 
     {
-        Handler[msg->getKind()](wsm);
+        (this->*Handler[msg->getKind()])(wsm);
         delete(wsm);        
     }
     else 
         BaseWaveApplLayer::handleSelfMsg(msg);
 }
+
 
 void AppOfHandler::handlePositionUpdate(cObject* obj) {
     BaseWaveApplLayer::handlePositionUpdate(obj);

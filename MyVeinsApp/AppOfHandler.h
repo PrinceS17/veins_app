@@ -42,7 +42,8 @@ using namespace std;
  *
  */
 
-typedef void (*fType)(WaveShortMessage *);                      // def fType for handler map
+class AppOfHandler;
+typedef void (AppOfHandler::*fType)(WaveShortMessage *);                      // def fType for handler map
 
 
 // this is a type of node
@@ -205,7 +206,7 @@ class AppOfHandler : public BaseWaveApplLayer {
         state_type current_state;        // state like bea, cac...
         
         // my handler map
-        map<int, fType> Handler;
+        static map<int, fType> Handler;
         
         // my statistic
         //cOutVector delayVec;
