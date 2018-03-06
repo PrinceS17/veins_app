@@ -227,7 +227,7 @@ class AppOfHandler : public BaseWaveApplLayer {
         // handler for requester
         virtual void generateJob(WaveShortMessage* wsm);        // as cac(), contains generate_job(), doesn't need wsm; no need to register
         virtual void handleCache(WaveShortMessage* wsm);        // GENERATE_JOB_EVT part, doesn't need wsm
-        virtual void handleDISQ(WaveShortMessage* wsm);         // as dis(R:0), doesn't need wsm; no need to register
+        virtual void handleDISQ(WaveShortMessage* wsm);         // as dis(R:0), contains EREQ; doesn't need wsm; no need to register
         virtual void checkEREQ(WaveShortMessage* wsm);          // CHECK_EREQ_EVT part, no need to rewrite local_process()
         virtual void handleDISP(WaveShortMessage* wsm);         // as dis(R:1), contains sch(), rewriting needed: no dat() part, send self-msg containing scheduling result at now or future
         virtual void sendData(WaveShortMessage* wsm);           // ENTER_SCH_EVT part and dat(R:0), also contains SEND_DATA_EVT part (or another handler is needed...)
@@ -235,20 +235,19 @@ class AppOfHandler : public BaseWaveApplLayer {
         
         // handler for processor
         virtual void sendBeacon(WaveShortMessage* wsm);         // as bea(wsm, ss = NULL), same as SEND_MY_BEACON_EVT, contains send_beacon(); doesn't need wsm
-        virtual void processEREQ(WaveShortMessage* wsm);        // as dis(P:0)
+        virtual void processEREQ(WaveShortMessage* wsm);        // as dis(P:0), contains EREP
         virtual void processJobBrief(WaveShortMessage* wsm);    // as dat(P:0)
         virtual void processData(WaveShortMessage* wsm);        // as dat(P:1)
         
         // tool functions
         virtual void checkWSM(WaveShortMessage* wsm);           // do things at the start of onWSM
-        virtual void send_EREP(int rcvId, stringstream &EREQ);
-        virtual void send_EREQ(queue<job> job_queue, double job_time);
-        virtual vector<int> scheduling(vector<job> job_vector, int type);       // retain for more complex algorithm
+        virtual vector<int> scheduling(vector<int> v0, int type);       // retain for more complex algorithm
         virtual void send_data(int size, int rcvId, int serial, simtime_t time);
         virtual void send_data(job myJob, int rcvId, int serial, simtime_t time);
         virtual void local_process(queue<job> job_queue);
         virtual void local_process(vector<job> job_vec);
         virtual void relay(WaveShortMessage* wsm);
+        virtual bool on_data_check(WaveShortMessage* wsm, int srcId);
         
     };
 
