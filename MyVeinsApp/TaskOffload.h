@@ -33,15 +33,17 @@ using namespace omnetpp;
 using namespace std;
 
 enum enum_type {TaV, SeV};
+enum state_type {PB, PT, SR, HO, UR};                   // state name is short for the function it should trigger, e.g. PB -> processBrief
 
 class TaskOffload;
 typedef void (TaskOffload::*fType)(WaveShortMessage *);
+typedef pair<int, state_type> tl;                       // tl(traffic light): time(int) & color(state)
 
 struct task
 {
-    int data_size;          // x_t, [0.2, 1] Mbit
-    int result_size;        // y_t
-    double cycle_per_bit;   // w_t
+    double data_size;          // x_t, [0.2, 1] Mbit
+    double result_size;        // y_t
+    double cycle_per_bit;      // w_t
     double start;
     double delay;
 };
@@ -52,7 +54,7 @@ public:
     vector<int> SeV_set;
     map<int, double> bit_delay;       // u(t, n), n is vehicleId
     map<int, int> count;              // k(t, n)
-    map<int, double> occur_time;      // t_n: occurance time
+    map<int, double> occur_time;      // t_n: occurrence time
     
 public:
     void push_back(int vehicleId)
@@ -60,20 +62,25 @@ public:
         SeV_set.push_back(vehicleId);
         bit_delay[vehicleId] = 0;
         count[vehicleId] = 0;
+        occur_time[vehicleId] = -1;
     }
-    void init(int vehicleId, double delay, int x_t)
+    void init(int vehicleId, double delay, double x_t)
     {
-        bit_delay[vehicleId] = delay / (double)x_t;
+        bit_delay[vehicleId] = delay / x_t;
         count[vehicleId] = 1;
         occur_time[vehicleId] = simTime().dbl();
     }
+    bool if_exist(int vehicleId)
+    {
+        return find(SeV_set.begin(), SeV_set.end(), vehicleId) != SeV_set.end();
+    }
     bool if_connect(int vehicleId)
     {
-        return (count[vehicleId] == 1);
+        return (count[vehicleId] > 0);
     }
-    void update(int vehicleId, double delay, int x_t)
+    void update(int vehicleId, double delay, double x_t)
     {
-        bit_delay[vehicleId] = (bit_delay[vehicleId] * count[vehicleId] + delay / (double)x_t) / (count[vehicleId] + 1);
+        bit_delay[vehicleId] = (bit_delay[vehicleId] * count[vehicleId] + delay / x_t) / (count[vehicleId] + 1);
         count[vehicleId] ++;
     }
 };
@@ -97,6 +104,7 @@ public:
     double beta = 2;            // parameter for UCB
     
     void formal_out(const char* str, int lv);
+    void display_SeV();
     
 protected:
     simtime_t lastDroveAt;
@@ -105,6 +113,7 @@ protected:
 
     // my own definitions
     enum_type node_type;
+    state_type cur_state;
     simsignal_t sig;
     simtime_t current_task_time;
     double CPU_freq_max;            // [2, 6] GHz
@@ -113,7 +122,7 @@ protected:
     SeV_class SeV_info;
     vector<task> task_vector;       // tasks recorded
     map<int, task> work_info;       // store from brief, to process data
-    map<int, fType> Handler;
+    map<tl, fType> Handler;
     
 protected:
     virtual void onBSM(BasicSafetyMessage* bsm);
@@ -141,10 +150,10 @@ protected:
     virtual void relay(WaveShortMessage* wsm);
     virtual bool on_data_check(WaveShortMessage*wsm, int srcId);
     virtual bool checkWSM(WaveShortMessage* wsm);
-    virtual int scheduling(double beta, int x_t);
+    virtual int scheduling(double beta, double x_t);
     virtual void local_process(task myTask);
     virtual void send_data(task mytask, int rcvId, int serial);
-    virtual void send_data(int size, int rcvId, int serial);
+    virtual void send_data(double size, int rcvId, int serial);
     
 };
 
