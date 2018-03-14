@@ -58,12 +58,39 @@ void TaskOffload::formal_out(const char* str, int lv)
 void TaskOffload::display_SeV()
 {
     formal_out("SeV information:", 2);
+    string str = "scale = 1e" + to_string((int)log10(scale));
+    formal_out(str.c_str(), 2);
     formal_out("id     delay/bit (us)      count     occur time", 3);
     for(auto id:SeV_info.SeV_set)
     {
         string str = to_string(id) + "      " + to_string(SeV_info.bit_delay.at(id) * 1e6) + "              " + to_string(SeV_info.count.at(id)) + "       " + to_string(SeV_info.occur_time.at(id));
         formal_out(str.c_str(), 3);
     }    
+}
+
+int TaskOffload::nextKind(int kind)
+{
+    if(node_type == SeV)
+    {
+        switch(kind)
+        {
+        case onJ: return onD;
+        case onD: return selfR;
+        case selfR: return onJ;
+        case 0: return onJ;         // start when there's no entry
+        default: return -1;         // error kind
+        }
+    }
+    else
+    {
+        switch(kind)
+        {
+        case selfG: return onD;
+        case onD: return selfG;
+        case 0: return onD;         // in fact no need
+        default: return -1;
+        }
+    }
 }
 
 void TaskOffload::relay(WaveShortMessage* wsm)
@@ -85,6 +112,15 @@ bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
     if(wsm->getRecipientAddress() != myId)
     {   
         relay(wsm); 
+        return false;
+    }
+    int curKind;
+    if(bp_list.find(srcId) != bp_list.end())                
+        curKind = bp_list.at(srcId);
+    else curKind = 0;                                       // for SeV, the initial stage sets 0
+    if(wsm->getKind() != nextKind(curKind))                 // pass only it's the right kind
+    {
+        formal_out("Block by block-pass list!", 1);         // e.g. bp_list: (13, onJ) means: for 13, only pass (13, onD)
         return false;
     }
     return true;
@@ -122,7 +158,7 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
         double xt1 = x_t > mean_size ? 1.0:0.0;
         double d_tn = simTime().dbl() - SeV_info.occur_time.at(id);
         double k = SeV_info.count.at(id);
-        utility.push_back( SeV_info.bit_delay.at(id) - sqrt(beta * (1 - xt1) * log(d_tn) / k) );
+        utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * (1 - xt1) * log(d_tn) / k) );
 
         string str = "SeV " + to_string(id) + ": u = " + to_string(utility.at(i));
         formal_out(str.c_str(), 3);
@@ -149,7 +185,6 @@ void TaskOffload::local_process(task myTask)
     myTask.delay = current_task_time.dbl() - myTask.start;        // recored the final delay
     job_delay = myTask.delay;
     // emit(sig, job_delay);                                         // commented when caring about offloading delay
-    cur_state = HO;
 }
 
 void TaskOffload::send_data(double size, int rcvId, int serial)
@@ -223,8 +258,12 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
     Coord position, speed;
     bool ifIdle;
     ss >> vehicleId >> ifIdle >> position.x >> position.y >> position.z >> speed.x >> speed.y >> speed.z;
-    if(curPosition.distance(position) < Crange && curSpeed.distance(speed) < speed_limit && !SeV_info.if_exist(vehicleId))
+    bool ifAvailable = curPosition.distance(position) < Crange && curSpeed.distance(speed) < speed_limit;
+    if(SeV_info.if_exist(vehicleId) && ifAvailable)
+        SeV_info.last_time.at(vehicleId) = simTime().dbl();  
+    else if(!SeV_info.if_exist(vehicleId) && ifAvailable)
         SeV_info.push_back(vehicleId);
+    SeV_info.check();
 }
 
 void TaskOffload::handleOffload(WaveShortMessage* wsm)
@@ -248,7 +287,7 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     }
     for(int id:SeV_info.SeV_set)
     {
-        if(!SeV_info.if_connect(id))                    // find one unconnected SeV
+        if(!SeV_info.if_connect(id) || SeV_info.SeV_set.size() == 1)   // find one unconnected SeV or only one SeV
         {
             rcvId = id;
             break;
@@ -257,7 +296,10 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     if(rcvId == -9999)  rcvId = scheduling(beta, x_t);  // all connected
     send_data(myTask, rcvId, 0);
     work_info[rcvId] = myTask;
-    cur_state = UR;
+
+    map<int, int>::iterator ite;
+    for(ite = bp_list.begin(); ite != bp_list.end(); ite ++)            // allow all data being received
+        ite->second = selfG;
 
 }
 
@@ -281,6 +323,8 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
         }
         task myTask = work_info.at(vehicleId);
         myTask.delay = simTime().dbl() - myTask.start;
+        if(scale < 0)
+            scale = pow(10, floor(log10(myTask.data_size / myTask.delay)));  // scale the u into [0, 1]
         if(SeV_info.count.at(vehicleId) == 0)
             SeV_info.init(vehicleId, myTask.delay, myTask.data_size);        // add occurrence time
         else SeV_info.update(vehicleId, myTask.delay, myTask.data_size);     // maintain u & k
@@ -291,7 +335,7 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
         string str = "Finish updating result from " + to_string(vehicleId) + "; delay = " + to_string(job_delay.dbl());
         formal_out(str.c_str(), 1);
         work_info.erase(vehicleId);
-        cur_state = HO;
+        bp_list[vehicleId] = onD;
     }
 }
 
@@ -320,7 +364,8 @@ void TaskOffload::processBrief(WaveShortMessage* wsm)
     task myTask;
     ss >> myTask.data_size >> myTask.result_size >> myTask.cycle_per_bit >> myTask.start;
     work_info[vehicleId] = myTask;
-    cur_state = PT;
+    //    CPU_percentage = uniform(0.2, 0.5);             // randomly change percentage at each period
+    bp_list[vehicleId] = onJ;
 }
 
 void TaskOffload::processTask(WaveShortMessage* wsm)
@@ -330,6 +375,11 @@ void TaskOffload::processTask(WaveShortMessage* wsm)
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
 
+    if(simTime() > 25.0019)
+    {
+
+        formal_out("25.009!", 1);
+    }
     formal_out("task data received...", 2);
     task myTask = work_info.at(vehicleId);
     ss.seekg(-2, ss.end);
@@ -352,26 +402,23 @@ void TaskOffload::processTask(WaveShortMessage* wsm)
         sdr->setKind(selfR);
         sdr->setWsmData(to_string(vehicleId).c_str());
         scheduleAt(current_task_time, sdr->dup());
-        cur_state = SR;
+        bp_list[vehicleId] = onD;
     }
 }
 
 void TaskOffload::sendResult(WaveShortMessage* wsm)
 {
-    formal_out("sending result...", 2);
     stringstream ss(wsm->getWsmData());
     int vehicleId;
     ss >> vehicleId;
-    if(work_info.find(vehicleId) == work_info.end())
-    {
-        formal_out("Already end sending this result!", 1);
-        return;
-    }
+    if(!on_data_check(wsm, vehicleId)) return;
+
+    formal_out("sending result...", 2);
     task myTask = work_info.at(vehicleId);
     for(int i :{1,2,3}) 
         send_data(myTask.result_size, vehicleId, 0);        // ensure reliability
     work_info.erase(vehicleId);
-    cur_state = PB;
+    bp_list[vehicleId] = selfR;
 }
 
 void TaskOffload::sendDup(WaveShortMessage* wsm)
@@ -391,11 +438,9 @@ void TaskOffload::initialize(int stage)
         lastDroveAt = simTime();
         currentSubscribedServiceId = -1;
         node_type = rand() < 0.5*RAND_MAX? TaV:SeV;              // can be initialized by the position or other properties of nodes
-        cur_state = node_type == TaV? HO:PB;
-
         current_task_time = 0;
         //        CPU_freq_max = uniform(2, 6) * 1e9;
-        //        CPU_percentage = uniform(0.2, 0.5);
+
         CPU_freq_max = 4e9;                                      // fixed at first
         CPU_percentage = 0.3;
         idle_state = true;
@@ -406,25 +451,19 @@ void TaskOffload::initialize(int stage)
         formal_out("registering...", 1);
         WaveShortMessage* ini = new WaveShortMessage();
         if(node_type == SeV)
-        {            
-            Handler[make_pair(onD, PT)] = &TaskOffload::processTask;        // only PT state can enter processTask, avoid processing twice
-            Handler[make_pair(onJ, PB)] = &TaskOffload::processBrief;       // state changed at the end of function, in case of relay or discard part
-            Handler[make_pair(selfR, SR)] = &TaskOffload::sendResult;       // a Mealy machine
-            for(auto tp:{PB, PT, SR, HO, UR})                               // sendBeacon & sendDup only decided by message kind
-            {
-                Handler[make_pair(selfB, tp)] = &TaskOffload::sendBeacon;
-                Handler[make_pair(selfDup, tp)] = &TaskOffload::sendDup;
-            }
+        {       
+            Handler[selfB] = &TaskOffload::sendBeacon;
+            Handler[onD] = &TaskOffload::processTask;
+            Handler[onJ] = &TaskOffload::processBrief;
+            Handler[selfR] = &TaskOffload::sendResult;
+            Handler[selfDup] = &TaskOffload::sendDup; 
             sendBeacon(ini);
         }
         else
         {           
-            Handler[make_pair(onD, UR)] = &TaskOffload::updateResult;
-            for(auto tp:{PB, PT, SR, HO, UR})
-            {
-                Handler[make_pair(selfG, tp)] = &TaskOffload::handleOffload;
-                Handler[make_pair(onB, tp)] = &TaskOffload::handleBeacon;
-            }    
+            Handler[selfG] = &TaskOffload::handleOffload;
+            Handler[onB] = &TaskOffload::handleBeacon;
+            Handler[onD] = &TaskOffload::updateResult;
             handleOffload(ini);
         }   
     }
@@ -473,16 +512,16 @@ void TaskOffload::handlePositionUpdate(cObject* obj)
 void TaskOffload::onWSM(WaveShortMessage* wsm)
 {
     if(!checkWSM(wsm)) return;
-    if(Handler.find(make_pair(wsm->getKind(), cur_state)) != Handler.end())
-        (this->*Handler[make_pair(wsm->getKind(), cur_state)])(wsm);
+    if(Handler.find(wsm->getKind()) != Handler.end())
+        (this->*Handler[wsm->getKind()])(wsm);
 }
 
 void TaskOffload::handleSelfMsg(cMessage* msg) {
     formal_out("Handling self message...", 1);
     if (WaveShortMessage* wsm = dynamic_cast<WaveShortMessage*>(msg)) 
     {
-        if(Handler.find(make_pair(wsm->getKind(), cur_state)) != Handler.end())
-            (this->*Handler[make_pair(wsm->getKind(), cur_state)])(wsm);
+        if(Handler.find(wsm->getKind()) != Handler.end())
+            (this->*Handler[wsm->getKind()])(wsm);
         delete(wsm);        
     }
     else BaseWaveApplLayer::handleSelfMsg(msg);
