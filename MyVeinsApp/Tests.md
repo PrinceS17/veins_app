@@ -7,3 +7,4 @@
 6) TaV can receive each result
 7) init or update SeV_info correctly.
 8) SeV works correctly if for multi-TaVs.
+9) if SeV_info got check correctly (when cars leave the range).
