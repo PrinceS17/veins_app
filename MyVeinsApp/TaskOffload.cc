@@ -60,10 +60,10 @@ void TaskOffload::display_SeV()
     formal_out("SeV information:", 2);
     string str = "scale = 1e" + to_string((int)log10(scale));
     formal_out(str.c_str(), 2);
-    formal_out("id     delay/bit (us)      count     occur time", 3);
+    formal_out("id     delay/bit (us)      count     occur time     last time", 3);
     for(auto id:SeV_info.SeV_set)
     {
-        string str = to_string(id) + "      " + to_string(SeV_info.bit_delay.at(id) * 1e6) + "              " + to_string(SeV_info.count.at(id)) + "       " + to_string(SeV_info.occur_time.at(id));
+        string str = to_string(id) + "      " + to_string(SeV_info.bit_delay.at(id) * 1e6) + "              " + to_string(SeV_info.count.at(id)) + "       " + to_string(SeV_info.occur_time.at(id)) + "        " + to_string(SeV_info.last_time.at(id));
         formal_out(str.c_str(), 3);
     }    
 }
@@ -99,20 +99,23 @@ void TaskOffload::relay(WaveShortMessage* wsm)
     wsm->setSerial(wsm->getSerial() +1);
     sendDown(wsm->dup());
     string str = "Relay! Current serial is " + to_string(wsm->getSerial());
-    formal_out(str.c_str(), 3);
+//    formal_out(str.c_str(), 3);
 }
 
 bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
 {
-    if(srcId == myId) 
-    {   
-        formal_out("Discard self message!", 1); 
-        return false; 
-    }
-    if(wsm->getRecipientAddress() != myId)
-    {   
-        relay(wsm); 
-        return false;
+    if(wsm->getSenderAddress() != myId)                     // it's not a self-msg, avoid printing relay for sending result
+    {
+        if(srcId == myId) 
+        {   
+//            formal_out("Discard self message!", 1); 
+            return false; 
+        }
+        if(wsm->getRecipientAddress() != myId)
+        {   
+            relay(wsm); 
+            return false;
+        }
     }
     int curKind;
     if(bp_list.find(srcId) != bp_list.end())                
@@ -120,7 +123,8 @@ bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
     else curKind = 0;                                       // for SeV, the initial stage sets 0
     if(wsm->getKind() != nextKind(curKind))                 // pass only it's the right kind
     {
-        formal_out("Block by block-pass list!", 1);         // e.g. bp_list: (13, onJ) means: for 13, only pass (13, onD)
+        string str = "Block by block-pass list! Current kind: " + to_string(curKind) + "; msg kind: " + to_string(wsm->getKind());
+//        formal_out(str.c_str(), 1);         // e.g. bp_list: (13, onJ) means: for 13, only pass (13, onD)
         return false;
     }
     return true;
@@ -128,18 +132,9 @@ bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
 
 bool TaskOffload::checkWSM(WaveShortMessage* wsm)
 {
-    //    if(strlen(wsm->getWsmData()) < 50)
-    //        formal_out(wsm->getWsmData(), 1);
-    //    else
-    //    {
-    //        string temp;
-    //        temp.assign(wsm->getWsmData(), wsm->getWsmData() + 50);
-    //        formal_out((temp + "... for short").c_str(), 1);
-    //    }
-
     if(wsm->getSerial() >= 3)                       // discard 3-hop message or self message
     {
-        formal_out("Discard 3-hop message!", 1);
+//        formal_out("Discard 3-hop message!", 1);
         return false;
     }
 
@@ -208,7 +203,10 @@ void TaskOffload::send_data(double size, int rcvId, int serial)
         data->setKind(onD);
         data->setWsmLength(l);
         data->setWsmData(ss.str().c_str());  
-        sendDown(data);
+        if(i == num - 1) 
+            for(int i:{1,2,3}) sendDown(data->dup());
+        else sendDown(data->dup());                      // commented it can obviously increase the speed
+        delete(data);
         if(current_task_time <= simTime()) idle_state = true;
     }
 }
@@ -222,7 +220,7 @@ void TaskOffload::send_data(task myTask, int rcvId, int serial)
     populateWSM(pre_data, rcvId, serial);
     pre_data->setKind(onJ);
     pre_data->setWsmData(ss.str().c_str());
-    for(int i :{1,2,3})                         // resend 3 times to ensure the reliability!
+    for(int i :{1,2,3,4,5,6})                         // resend 6 times to ensure the reliability!
         sendDown(pre_data->dup());
     send_data(myTask.data_size, rcvId, serial);
 }
@@ -247,6 +245,7 @@ void TaskOffload::handleTraffic(WaveShortMessage* wsm)
 
 void TaskOffload::handleBeacon(WaveShortMessage* wsm)
 {
+
     formal_out("TaV: my beacon...", 2);
     string str = "my SeV now: ";
     for(int id:SeV_info.SeV_set)
@@ -263,11 +262,12 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
         SeV_info.last_time.at(vehicleId) = simTime().dbl();  
     else if(!SeV_info.if_exist(vehicleId) && ifAvailable)
         SeV_info.push_back(vehicleId);
-    SeV_info.check();
+    display_SeV();
 }
 
 void TaskOffload::handleOffload(WaveShortMessage* wsm)
 {
+
     formal_out("TaV: generate tasks...", 2);
     //    double x_t = 6e5;
     double x_t = uniform(2, 10) * 1e5;
@@ -280,6 +280,8 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
 
     formal_out("TaV: begin offloading...", 2);
     int rcvId = -9999;
+    SeV_info.check(work_info);                          // it's supposed to solve the 'work info lost' problem
+    
     if(SeV_info.SeV_set.empty())                        // if no SeV currently
     {
         local_process(myTask);
@@ -309,11 +311,12 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
     int vehicleId;
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
-    formal_out("result received...", 2);
-
+//    formal_out(("result received from " + to_string(vehicleId)).c_str(), 2);
+ 
     ss.seekg(-2, ss.end);
     string temp;
     ss >> temp;
+    
     if(temp == "ed")
     {
         if(work_info.find(vehicleId) == work_info.end())
@@ -325,6 +328,8 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
         myTask.delay = simTime().dbl() - myTask.start;
         if(scale < 0)
             scale = pow(10, floor(log10(myTask.data_size / myTask.delay)));  // scale the u into [0, 1]
+        if(!SeV_info.if_exist(vehicleId)) 
+            formal_out(" Error: vehicle doesn't exist in SeV table now!", 1);   // following .count.at will throw an out-of-range error
         if(SeV_info.count.at(vehicleId) == 0)
             SeV_info.init(vehicleId, myTask.delay, myTask.data_size);        // add occurrence time
         else SeV_info.update(vehicleId, myTask.delay, myTask.data_size);     // maintain u & k
@@ -375,21 +380,19 @@ void TaskOffload::processTask(WaveShortMessage* wsm)
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
 
-    if(simTime() > 25.0019)
-    {
-
-        formal_out("25.009!", 1);
-    }
-    formal_out("task data received...", 2);
+//    formal_out("task data received...", 2);
     task myTask = work_info.at(vehicleId);
     ss.seekg(-2, ss.end);
     string temp;
     ss >> temp;
     if(temp == "ed")
     {
+        if(simTime() > 65.589)
+        {
+            
+            formal_out("65.589!", 1);
+        }
         double task_time = myTask.data_size * myTask.cycle_per_bit / (CPU_freq_max * CPU_percentage);
-        string str = "task time: " + to_string(task_time);
-        formal_out(str.c_str(), 3);
         if(current_task_time > simTime())
             current_task_time += task_time;
         else
@@ -397,6 +400,9 @@ void TaskOffload::processTask(WaveShortMessage* wsm)
             idle_state = false;
             current_task_time = simTime() + task_time;
         } 
+        string str = "task time: " + to_string(task_time) + "; schedule time: " + to_string(current_task_time.dbl()) + "; from vehicle: " + to_string(vehicleId);
+        formal_out(str.c_str(), 3);
+        
         WaveShortMessage* sdr = new WaveShortMessage();
         populateWSM(sdr);
         sdr->setKind(selfR);
@@ -413,10 +419,9 @@ void TaskOffload::sendResult(WaveShortMessage* wsm)
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
 
-    formal_out("sending result...", 2);
+    formal_out(("sending result to " + to_string(vehicleId)).c_str(), 2);
     task myTask = work_info.at(vehicleId);
-    for(int i :{1,2,3}) 
-        send_data(myTask.result_size, vehicleId, 0);        // ensure reliability
+    send_data(myTask.result_size, vehicleId, 0);        // ensure reliability
     work_info.erase(vehicleId);
     bp_list[vehicleId] = selfR;
 }

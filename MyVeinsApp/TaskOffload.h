@@ -56,8 +56,17 @@ public:
     map<int, int> count;              // k(t, n)
     map<int, double> occur_time;      // t_n: occurrence time
     map<int, double> last_time;       // time of the last check
-    
+
 public:
+    void print(bool kind, int vehicleId)
+    {
+        stringstream ss;
+        string str;
+        for(int id:SeV_set) ss << id <<" "<< count.at(id) <<"; ";
+        if(kind) str = "       Push back: " + to_string(vehicleId) + " ; \n" + ss.str();
+        else str = "       Erase: " + to_string(vehicleId) + " ;\n      " + ss.str();
+        EV << str.c_str() << endl;
+    }
     void push_back(int vehicleId)
     {
         SeV_set.push_back(vehicleId);
@@ -65,6 +74,7 @@ public:
         count[vehicleId] = 0;
         occur_time[vehicleId] = -1;
         last_time[vehicleId] = simTime().dbl();
+        print(true, vehicleId);
     }
     bool erase(int vehicleId)
     {
@@ -75,6 +85,7 @@ public:
         count.erase(vehicleId);
         occur_time.erase(vehicleId);
         last_time.erase(vehicleId);
+        print(false, vehicleId);
         return true;
     }
     void init(int vehicleId, double delay, double x_t)
@@ -98,12 +109,13 @@ public:
         count[vehicleId] ++;
         last_time[vehicleId] = simTime().dbl();
     }
-    void check()
+    void check(map<int, task> whitelist)        // protect id being processed from erasion
     {
-        for(auto id:SeV_set)
+        vector<int> temp_set(SeV_set);          // avoid the condition erased by the loop!
+        for(auto id:temp_set)
         {
-            if(simTime() - last_time[id] > 2)
-                if(!erase(id)) EV <<"       Error: SeV_set erase failed!";
+            if(simTime() - last_time.at(id) > 2 && whitelist.find(id) == whitelist.end())
+                if(!erase(id)) EV <<"       Error: SeV_set erase failed - no ID: " << id << "!"<< endl;
         }
     }
 };
@@ -112,7 +124,7 @@ class TaskOffload: public BaseWaveApplLayer {
 public:
     virtual void initialize(int stage);
     virtual void finish();
-    
+
 public:
     double mean_size = 6e5;     // for x_t,
     double bc_interval = 1;     // 1 s
@@ -120,17 +132,17 @@ public:
     double Crange = 200;        // communication range
     double speed_limit = 15;
     simtime_t job_delay;
-    
+
     // input parameter, initial value, may vary to simulate
     double alpha0 = 0.05;       // y_t/x_t
     double w0 = 1000;           // typical value
     double beta = 2;            // parameter for UCB
     double scale = -1;          // scale for x_t
-    
+
     void formal_out(const char* str, int lv);
     void display_SeV();         // display info of SeV
     int nextKind(int kind);     // find the right kind for on_data_check()
-    
+
 protected:
     simtime_t lastDroveAt;
     bool sentMessage;
@@ -149,7 +161,7 @@ protected:
     map<int, task> work_info;       // store from brief, to process data
     map<int, int> bp_list;          // block-pass list: block the too old, pass the next, see on_data_check()
     map<int, fType> Handler;
-    
+
 protected:
     virtual void onBSM(BasicSafetyMessage* bsm);
     virtual void onWSM(WaveShortMessage* wsm);
@@ -159,19 +171,19 @@ protected:
 
     // handler for both
     virtual void handleTraffic(WaveShortMessage* wsm);
-    
+
     // handler for TaV
     virtual void handleBeacon(WaveShortMessage* wsm);
     virtual void handleOffload(WaveShortMessage* wsm);      // containing generation part
     virtual void updateResult(WaveShortMessage* wsm);
-    
+
     // handler for SeV
     virtual void sendBeacon(WaveShortMessage* wsm);
     virtual void processBrief(WaveShortMessage* wsm);
     virtual void processTask(WaveShortMessage* wsm);
     virtual void sendResult(WaveShortMessage* wsm);
     virtual void sendDup(WaveShortMessage* wsm);
-    
+
     // tool function
     virtual void relay(WaveShortMessage* wsm);
     virtual bool on_data_check(WaveShortMessage*wsm, int srcId);
@@ -180,7 +192,7 @@ protected:
     virtual void local_process(task myTask);
     virtual void send_data(task mytask, int rcvId, int serial);
     virtual void send_data(double size, int rcvId, int serial);
-    
+
 };
 
 #endif
