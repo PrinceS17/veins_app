@@ -63,7 +63,7 @@ public:
         stringstream ss;
         string str;
         for(int id:SeV_set) ss << id <<" "<< count.at(id) <<"; ";
-        if(kind) str = "       Push back: " + to_string(vehicleId) + " ; \n" + ss.str();
+        if(kind) str = "       Push back: " + to_string(vehicleId) + " ; \n     " + ss.str();
         else str = "       Erase: " + to_string(vehicleId) + " ;\n      " + ss.str();
         EV << str.c_str() << endl;
     }
@@ -126,11 +126,11 @@ public:
     virtual void finish();
 
 public:
-    double mean_size = 6e5;     // for x_t,
     double bc_interval = 1;     // 1 s
     double task_interval = 1;   // periodically generate here
-    double Crange = 200;        // communication range
+    double Crange = 300;        // communication range
     double speed_limit = 15;
+    double time_limit = 2;      // time limit for work_info chck
     simtime_t job_delay;
 
     // input parameter, initial value, may vary to simulate
@@ -140,6 +140,7 @@ public:
     double scale = -1;          // scale for x_t
 
     void formal_out(const char* str, int lv);
+    void pos_spd();             // display current speed and position
     void display_SeV();         // display info of SeV
     int nextKind(int kind);     // find the right kind for on_data_check()
 
@@ -152,7 +153,10 @@ protected:
     enum_type node_type;
     state_type cur_state;           // Mealy machine not work for multi-TaV, replaced by bp_list
     simsignal_t sig;
+    string external_id;             // the sumo id
     simtime_t current_task_time;
+    double x_av;                    // for x_t,
+    double dx;                      // x_av - x_min
     double CPU_freq_max;            // [2, 6] GHz
     double CPU_percentage;          // [0.2, 0.5]
     bool idle_state;
@@ -186,6 +190,7 @@ protected:
 
     // tool function
     virtual void relay(WaveShortMessage* wsm);
+    virtual void SeV_work_check();
     virtual bool on_data_check(WaveShortMessage*wsm, int srcId);
     virtual bool checkWSM(WaveShortMessage* wsm);
     virtual int scheduling(double beta, double x_t);

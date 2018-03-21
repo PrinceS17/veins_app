@@ -55,6 +55,15 @@ void TaskOffload::formal_out(const char* str, int lv)
     }
 }
 
+void TaskOffload::pos_spd()
+{
+    stringstream ss, ss1;
+    ss << "Current position: ( " << curPosition.x <<' '<< curPosition.y <<' '<< curPosition.z <<" )";
+    formal_out(ss.str().c_str(), 3);
+    ss1 << "Current speed: ( " << curSpeed.x <<' '<< curSpeed.y <<' '<< curSpeed.z <<" )";
+    formal_out(ss1.str().c_str(), 3);
+}
+
 void TaskOffload::display_SeV()
 {
     formal_out("SeV information:", 2);
@@ -99,7 +108,17 @@ void TaskOffload::relay(WaveShortMessage* wsm)
     wsm->setSerial(wsm->getSerial() +1);
     sendDown(wsm->dup());
     string str = "Relay! Current serial is " + to_string(wsm->getSerial());
-//    formal_out(str.c_str(), 3);
+    //    formal_out(str.c_str(), 3);
+}
+
+void TaskOffload::SeV_work_check()
+{
+    for(int id:SeV_info.SeV_set)
+        if(work_info.find(id) != work_info.end() && simTime().dbl() - work_info.at(id).start > time_limit)
+            work_info.erase(id);
+    SeV_info.check(work_info);
+
+
 }
 
 bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
@@ -108,7 +127,7 @@ bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
     {
         if(srcId == myId) 
         {   
-//            formal_out("Discard self message!", 1); 
+            //            formal_out("Discard self message!", 1); 
             return false; 
         }
         if(wsm->getRecipientAddress() != myId)
@@ -124,7 +143,7 @@ bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
     if(wsm->getKind() != nextKind(curKind))                 // pass only it's the right kind
     {
         string str = "Block by block-pass list! Current kind: " + to_string(curKind) + "; msg kind: " + to_string(wsm->getKind());
-//        formal_out(str.c_str(), 1);         // e.g. bp_list: (13, onJ) means: for 13, only pass (13, onD)
+        //        formal_out(str.c_str(), 1);         // e.g. bp_list: (13, onJ) means: for 13, only pass (13, onD)
         return false;
     }
     return true;
@@ -132,9 +151,9 @@ bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
 
 bool TaskOffload::checkWSM(WaveShortMessage* wsm)
 {
-    if(wsm->getSerial() >= 3)                       // discard 3-hop message or self message
+    if(wsm->getSerial() >= 2)                       // discard 3-hop message or self message
     {
-//        formal_out("Discard 3-hop message!", 1);
+        //        formal_out("Discard 3-hop message!", 1);
         return false;
     }
 
@@ -150,14 +169,19 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
     for(int i = 0; i < SeV_info.SeV_set.size(); i ++)
     {
         int id = SeV_info.SeV_set.at(i);
-        double xt1 = x_t > mean_size ? 1.0:0.0;
-        double d_tn = simTime().dbl() - SeV_info.occur_time.at(id);
-        double k = SeV_info.count.at(id);
-        utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * (1 - xt1) * log(d_tn) / k) );
-
+        if(work_info.find(id) != work_info.end())
+            utility.push_back(9999);    // avoid choosing the SeV which is processing my last job now
+        else
+        {
+            double xt1 = x_t > x_av ? 1.0:0.0;
+            double d_tn = simTime().dbl() - SeV_info.occur_time.at(id);
+            double k = SeV_info.count.at(id);
+            utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * (1 - xt1) * log(d_tn) / k) );
+        }
         string str = "SeV " + to_string(id) + ": u = " + to_string(utility.at(i));
         formal_out(str.c_str(), 3);
     }
+
     int vid = SeV_info.SeV_set[min_element(utility.begin(), utility.end()) - utility.begin()];
     string str = "Choice: " + to_string(vid);
     formal_out(str.c_str(), 3);
@@ -166,7 +190,7 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
 
 void TaskOffload::local_process(task myTask)
 {
-    formal_out("locally_process...", 3);
+    formal_out("locally process...", 3);
 
     //    CPU_percentage = uniform(0.2, 0.5);
     double task_time =  myTask.data_size * myTask.cycle_per_bit / (CPU_freq_max * CPU_percentage);
@@ -179,7 +203,7 @@ void TaskOffload::local_process(task myTask)
     }    
     myTask.delay = current_task_time.dbl() - myTask.start;        // recored the final delay
     job_delay = myTask.delay;
-    // emit(sig, job_delay);                                         // commented when caring about offloading delay
+    emit(sig, job_delay);                                         // commented when caring about offloading delay
 }
 
 void TaskOffload::send_data(double size, int rcvId, int serial)
@@ -247,6 +271,7 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
 {
 
     formal_out("TaV: my beacon...", 2);
+    formal_out(wsm->getWsmData(), 2);
     string str = "my SeV now: ";
     for(int id:SeV_info.SeV_set)
         str += to_string(id) + " ";
@@ -262,6 +287,13 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
         SeV_info.last_time.at(vehicleId) = simTime().dbl();  
     else if(!SeV_info.if_exist(vehicleId) && ifAvailable)
         SeV_info.push_back(vehicleId);
+    else 
+    {
+        stringstream ss1;
+        ss1 << "Not available! distance: " << curPosition.distance(position) << "; speed dif: " << curSpeed.distance(speed);
+        formal_out(ss1.str().c_str(), 1);
+        //        pos_spd();
+    }
     display_SeV();
 }
 
@@ -269,8 +301,9 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
 {
 
     formal_out("TaV: generate tasks...", 2);
+    formal_out(("My sumo ID: " + external_id).c_str(), 2);
     //    double x_t = 6e5;
-    double x_t = uniform(2, 10) * 1e5;
+    double x_t = uniform(x_av - dx, x_av + dx);
     task myTask = {x_t, x_t * alpha0, w0, simTime().dbl()};
     task_vector.push_back(myTask);
     WaveShortMessage* tsk = new WaveShortMessage();     // schedule next task 
@@ -280,16 +313,17 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
 
     formal_out("TaV: begin offloading...", 2);
     int rcvId = -9999;
-    SeV_info.check(work_info);                          // it's supposed to solve the 'work info lost' problem
-    
-    if(SeV_info.SeV_set.empty())                        // if no SeV currently
-    {
-        local_process(myTask);
-        return;
-    }
+    SeV_work_check();                                   // for "work info lost" & "dead task & SeV" problem
     for(int id:SeV_info.SeV_set)
     {
-        if(!SeV_info.if_connect(id) || SeV_info.SeV_set.size() == 1)   // find one unconnected SeV or only one SeV
+        if(work_info.find(id) != work_info.end()) continue;
+        rcvId = id;
+    }
+    if(SeV_info.SeV_set.empty() || rcvId == -9999) {local_process(myTask); return; }        // if all are busy
+    rcvId = -9999;
+    for(int id:SeV_info.SeV_set)
+    {
+        if(!SeV_info.if_connect(id) || SeV_info.SeV_set.size() == 1 && work_info.find(id) == work_info.end())   // find one unconnected SeV or only one SeV
         {
             rcvId = id;
             break;
@@ -298,7 +332,6 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     if(rcvId == -9999)  rcvId = scheduling(beta, x_t);  // all connected
     send_data(myTask, rcvId, 0);
     work_info[rcvId] = myTask;
-
     map<int, int>::iterator ite;
     for(ite = bp_list.begin(); ite != bp_list.end(); ite ++)            // allow all data being received
         ite->second = selfG;
@@ -311,12 +344,12 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
     int vehicleId;
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
-//    formal_out(("result received from " + to_string(vehicleId)).c_str(), 2);
- 
+    //    formal_out(("result received from " + to_string(vehicleId)).c_str(), 2);
+
     ss.seekg(-2, ss.end);
     string temp;
     ss >> temp;
-    
+
     if(temp == "ed")
     {
         if(work_info.find(vehicleId) == work_info.end())
@@ -347,8 +380,10 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
 void TaskOffload::sendBeacon(WaveShortMessage* wsm)
 {
     formal_out("SeV: send beacon...", 2);
+    formal_out(("My sumo ID: " + external_id).c_str(), 2);
+    //    pos_spd();
     stringstream ss;
-    ss<< myId <<' '<< idle_state << curPosition.x <<' '<< curPosition.y <<' '<< curPosition.z <<' '<< curSpeed.x << ' '<< curSpeed.y <<' '<< curSpeed.z <<' ';
+    ss<< myId <<' '<< idle_state <<' '<< curPosition.x <<' '<< curPosition.y <<' '<< curPosition.z <<' '<< curSpeed.x << ' '<< curSpeed.y <<' '<< curSpeed.z <<' ';
     WaveShortMessage* bc = new WaveShortMessage();
     populateWSM(bc);
     bc->setKind(selfDup);
@@ -380,7 +415,7 @@ void TaskOffload::processTask(WaveShortMessage* wsm)
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
 
-//    formal_out("task data received...", 2);
+    //    formal_out("task data received...", 2);
     task myTask = work_info.at(vehicleId);
     ss.seekg(-2, ss.end);
     string temp;
@@ -389,7 +424,7 @@ void TaskOffload::processTask(WaveShortMessage* wsm)
     {
         if(simTime() > 65.589)
         {
-            
+
             formal_out("65.589!", 1);
         }
         double task_time = myTask.data_size * myTask.cycle_per_bit / (CPU_freq_max * CPU_percentage);
@@ -402,7 +437,7 @@ void TaskOffload::processTask(WaveShortMessage* wsm)
         } 
         string str = "task time: " + to_string(task_time) + "; schedule time: " + to_string(current_task_time.dbl()) + "; from vehicle: " + to_string(vehicleId);
         formal_out(str.c_str(), 3);
-        
+
         WaveShortMessage* sdr = new WaveShortMessage();
         populateWSM(sdr);
         sdr->setKind(selfR);
@@ -436,17 +471,23 @@ void TaskOffload::sendDup(WaveShortMessage* wsm)
 
 void TaskOffload::initialize(int stage)
 {
-    BaseWaveApplLayer::initialize(stage);
+    BaseWaveApplLayer::initialize(stage); 
     if(stage == 0)
     {
         sentMessage = false;
         lastDroveAt = simTime();
         currentSubscribedServiceId = -1;
-        node_type = rand() < 0.5*RAND_MAX? TaV:SeV;              // can be initialized by the position or other properties of nodes
-        current_task_time = 0;
-        //        CPU_freq_max = uniform(2, 6) * 1e9;
+        external_id = mobility->getExternalId();
+        //        node_type = rand() < 0.5*RAND_MAX? TaV:SeV;              // can be initialized by the position or other properties of nodes
+        node_type = (external_id.c_str()[0] - '0') % 2 == 0 ? TaV:SeV;
 
+        current_task_time = 0;
+        x_av = 6e5;                                              // for x_t,
+        dx = 4e5;                                                // x_av - x_min
+        //        CPU_freq_max = uniform(2, 6) * 1e9;
         CPU_freq_max = 4e9;                                      // fixed at first
+        //        CPU_freq_max = 2e9;         // test case 1.1
+
         CPU_percentage = 0.3;
         idle_state = true;
         sig = registerSignal("sig");
