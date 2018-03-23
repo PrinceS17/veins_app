@@ -33,6 +33,7 @@ using namespace omnetpp;
 using namespace std;
 
 enum enum_type {TaV, SeV};
+enum ucb_type {ucb, vucb, avucb};
 enum state_type {PB, PT, SR, HO, UR};                     // state name is short for the function it should trigger, e.g. PB -> processBrief
 
 class TaskOffload;
@@ -67,13 +68,20 @@ public:
         else str = "       Erase: " + to_string(vehicleId) + " ;\n      " + ss.str();
         EV << str.c_str() << endl;
     }
-    void push_back(int vehicleId)
+    void push_back(int vehicleId, ucb_type cur_ucb)
     {
         SeV_set.push_back(vehicleId);
         bit_delay[vehicleId] = 0;
         count[vehicleId] = 0;
         occur_time[vehicleId] = -1;
         last_time[vehicleId] = simTime().dbl();
+        if(cur_ucb == ucb)
+            for(int id:SeV_set)
+            {
+                bit_delay[id] = 0;
+                count[id] = 0;
+                occur_time[id] = -1;
+            }
         print(true, vehicleId);
     }
     bool erase(int vehicleId)
@@ -103,9 +111,11 @@ public:
     {
         return (count[vehicleId] > 0);
     }
-    void update(int vehicleId, double delay, double x_t)
+    void update(int vehicleId, double delay, double x_t, ucb_type cur_ucb)
     {
-        bit_delay[vehicleId] = (bit_delay[vehicleId] * count[vehicleId] + delay / x_t) / (count[vehicleId] + 1);
+        if(cur_ucb == avucb)
+            bit_delay[vehicleId] = (bit_delay[vehicleId] * count[vehicleId] + delay / x_t) / (count[vehicleId] + 1);
+        else bit_delay[vehicleId] = (bit_delay[vehicleId] * count[vehicleId] + delay ) / (count[vehicleId] + 1);
         count[vehicleId] ++;
         last_time[vehicleId] = simTime().dbl();
     }
@@ -131,6 +141,7 @@ public:
     double Crange = 300;        // communication range
     double speed_limit = 15;
     double time_limit = 2;      // time limit for work_info chck
+    int serial_max = 2;         // only 2-hop communication is allowed
     simtime_t job_delay;
 
     // input parameter, initial value, may vary to simulate
@@ -152,7 +163,9 @@ protected:
     // my own definitions
     enum_type node_type;
     state_type cur_state;           // Mealy machine not work for multi-TaV, replaced by bp_list
+    ucb_type cur_ucb;
     simsignal_t sig;
+    string file_name;               // output name
     string external_id;             // the sumo id
     simtime_t current_task_time;
     double x_av;                    // for x_t,

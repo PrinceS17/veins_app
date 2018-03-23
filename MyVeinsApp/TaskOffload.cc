@@ -21,6 +21,7 @@
 #include <string>
 #include <cstring>
 #include <random>
+#include <fstream>
 #include "TaskOffload.h"
 using namespace std;
 
@@ -105,6 +106,7 @@ int TaskOffload::nextKind(int kind)
 void TaskOffload::relay(WaveShortMessage* wsm)
 {
     wsm->setSenderAddress(myId);
+    if(wsm->getSerial() == serial_max - 1) return;       // control old wsm at TX side
     wsm->setSerial(wsm->getSerial() +1);
     sendDown(wsm->dup());
     string str = "Relay! Current serial is " + to_string(wsm->getSerial());
@@ -118,21 +120,18 @@ void TaskOffload::SeV_work_check()
             work_info.erase(id);
     SeV_info.check(work_info);
 
-
 }
 
 bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
 {
-    if(wsm->getSenderAddress() != myId)                     // it's not a self-msg, avoid printing relay for sending result
+    if(wsm->getSenderAddress() != myId )                  // it's not a self-msg, avoid printing relay for sending result
     {
-        if(srcId == myId) 
-        {   
-            //            formal_out("Discard self message!", 1); 
-            return false; 
-        }
-        if(wsm->getRecipientAddress() != myId)
-        {   
-            relay(wsm); 
+        if(srcId == myId) return false;
+        else if(wsm->getRecipientAddress() != myId) 
+        {
+            if(wsm->getKind() == onJ) relay(wsm);         // only relay job brief to reduce the msg amount
+            else if(wsm->getKind() == onD && uniform(0, 1) > 0.7)
+                relay(wsm);
             return false;
         }
     }
@@ -151,7 +150,7 @@ bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
 
 bool TaskOffload::checkWSM(WaveShortMessage* wsm)
 {
-    if(wsm->getSerial() >= 2)                       // discard 3-hop message or self message
+    if(wsm->getSerial() >= serial_max)                       // discard 3-hop message or self message
     {
         //        formal_out("Discard 3-hop message!", 1);
         return false;
@@ -176,7 +175,11 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
             double xt1 = x_t > x_av ? 1.0:0.0;
             double d_tn = simTime().dbl() - SeV_info.occur_time.at(id);
             double k = SeV_info.count.at(id);
-            utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * (1 - xt1) * log(d_tn) / k) );
+            if(cur_ucb == avucb)
+                utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * (1 - xt1) * log(d_tn) / k) );
+            else if(cur_ucb == vucb)
+                utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * log(d_tn) / k) );
+            else utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * log(simTime().dbl()) / k));
         }
         string str = "SeV " + to_string(id) + ": u = " + to_string(utility.at(i));
         formal_out(str.c_str(), 3);
@@ -192,7 +195,7 @@ void TaskOffload::local_process(task myTask)
 {
     formal_out("locally process...", 3);
 
-    //    CPU_percentage = uniform(0.2, 0.5);
+    CPU_percentage = uniform(0.2, 0.5);
     double task_time =  myTask.data_size * myTask.cycle_per_bit / (CPU_freq_max * CPU_percentage);
     if(current_task_time > simTime())
         current_task_time += task_time;
@@ -262,7 +265,7 @@ void TaskOffload::handleTraffic(WaveShortMessage* wsm)
         //repeat the received traffic update once in 2 seconds plus some random delay
         wsm->setSenderAddress(myId);
         wsm->setKind(onT);
-        wsm->setSerial(3);
+        wsm->setSerial(0);
         sendDown(wsm->dup());       // ? no wait time now
     }
 }
@@ -286,7 +289,7 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
     if(SeV_info.if_exist(vehicleId) && ifAvailable)
         SeV_info.last_time.at(vehicleId) = simTime().dbl();  
     else if(!SeV_info.if_exist(vehicleId) && ifAvailable)
-        SeV_info.push_back(vehicleId);
+        SeV_info.push_back(vehicleId, cur_ucb);
     else 
     {
         stringstream ss1;
@@ -312,6 +315,9 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     scheduleAt(simTime() + task_interval, tsk);
 
     formal_out("TaV: begin offloading...", 2);
+    fstream out(file_name.c_str(), ios::app | ios::out);    // record the offload process and choice 
+    out << simTime().dbl() <<"s TaV: " << myId <<" ; ";
+
     int rcvId = -9999;
     SeV_work_check();                                   // for "work info lost" & "dead task & SeV" problem
     for(int id:SeV_info.SeV_set)
@@ -319,17 +325,30 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
         if(work_info.find(id) != work_info.end()) continue;
         rcvId = id;
     }
-    if(SeV_info.SeV_set.empty() || rcvId == -9999) {local_process(myTask); return; }        // if all are busy
+    if(SeV_info.SeV_set.empty() || rcvId == -9999)      // if all are busy
+    {
+        local_process(myTask);
+        out <<"No idle SeV, locally process!"<<endl; 
+        return; 
+    }
     rcvId = -9999;
     for(int id:SeV_info.SeV_set)
     {
         if(!SeV_info.if_connect(id) || SeV_info.SeV_set.size() == 1 && work_info.find(id) == work_info.end())   // find one unconnected SeV or only one SeV
         {
             rcvId = id;
+            out <<"Chosen SeV: "<< rcvId << " , a new SeV" << endl;
             break;
         }
     }   
-    if(rcvId == -9999)  rcvId = scheduling(beta, x_t);  // all connected
+    if(rcvId == -9999)  
+    {
+        rcvId = scheduling(beta, x_t);  // all connected
+        out <<"Chosen SeV: "<< rcvId << " from scheduling; candidates: ";
+        for(int id:SeV_info.SeV_set) out<< id <<' ';
+        out <<endl;
+    }
+    out.close();
     send_data(myTask, rcvId, 0);
     work_info[rcvId] = myTask;
     map<int, int>::iterator ite;
@@ -365,13 +384,16 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
             formal_out(" Error: vehicle doesn't exist in SeV table now!", 1);   // following .count.at will throw an out-of-range error
         if(SeV_info.count.at(vehicleId) == 0)
             SeV_info.init(vehicleId, myTask.delay, myTask.data_size);        // add occurrence time
-        else SeV_info.update(vehicleId, myTask.delay, myTask.data_size);     // maintain u & k
+        else SeV_info.update(vehicleId, myTask.delay, myTask.data_size, cur_ucb);     // maintain u & k
         display_SeV();
 
         job_delay = myTask.delay;
         emit(sig, job_delay);           // send record signal
         string str = "Finish updating result from " + to_string(vehicleId) + "; delay = " + to_string(job_delay.dbl());
         formal_out(str.c_str(), 1);
+        fstream out(file_name.c_str(), ios::app | ios::out);        // easy for check the reliability
+        out <<"     "<< str << endl;
+        out.close();
         work_info.erase(vehicleId);
         bp_list[vehicleId] = onD;
     }
@@ -404,7 +426,7 @@ void TaskOffload::processBrief(WaveShortMessage* wsm)
     task myTask;
     ss >> myTask.data_size >> myTask.result_size >> myTask.cycle_per_bit >> myTask.start;
     work_info[vehicleId] = myTask;
-    //    CPU_percentage = uniform(0.2, 0.5);             // randomly change percentage at each period
+    CPU_percentage = uniform(0.2, 0.5);             // randomly change percentage at each period
     bp_list[vehicleId] = onJ;
 }
 
@@ -479,16 +501,18 @@ void TaskOffload::initialize(int stage)
         currentSubscribedServiceId = -1;
         external_id = mobility->getExternalId();
         //        node_type = rand() < 0.5*RAND_MAX? TaV:SeV;              // can be initialized by the position or other properties of nodes
-        node_type = (external_id.c_str()[0] - '0') % 2 == 0 ? TaV:SeV;
-
+        //        node_type = (external_id.c_str()[0] - '0') % 2 == 0 ? TaV:SeV;
+        node_type = (external_id.c_str()[0] - '0') % 4 == 0? TaV:SeV;
+        cur_ucb = vucb;
+        file_name = "offload_log_" + to_string(myId);
         current_task_time = 0;
         x_av = 6e5;                                              // for x_t,
         dx = 4e5;                                                // x_av - x_min
-        //        CPU_freq_max = uniform(2, 6) * 1e9;
-        CPU_freq_max = 4e9;                                      // fixed at first
+        CPU_freq_max = uniform(2, 6) * 1e9;
+        //        CPU_freq_max = 4e9;                                      // fixed at first
         //        CPU_freq_max = 2e9;         // test case 1.1
 
-        CPU_percentage = 0.3;
+        //        CPU_percentage = 0.3;
         idle_state = true;
         sig = registerSignal("sig");
     }
@@ -496,6 +520,7 @@ void TaskOffload::initialize(int stage)
     {
         formal_out("registering...", 1);
         WaveShortMessage* ini = new WaveShortMessage();
+        ini->setWsmData("start");
         if(node_type == SeV)
         {       
             Handler[selfB] = &TaskOffload::sendBeacon;
