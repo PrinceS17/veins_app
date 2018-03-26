@@ -33,7 +33,7 @@ using namespace omnetpp;
 using namespace std;
 
 enum enum_type {TaV, SeV};
-enum ucb_type {ucb, vucb, avucb};
+enum ucb_type {ucb, vucb, avucb, rdm};
 enum state_type {PB, PT, SR, HO, UR};                     // state name is short for the function it should trigger, e.g. PB -> processBrief
 
 class TaskOffload;
@@ -124,7 +124,7 @@ public:
         vector<int> temp_set(SeV_set);          // avoid the condition erased by the loop!
         for(auto id:temp_set)
         {
-            if(simTime() - last_time.at(id) > 2 && whitelist.find(id) == whitelist.end())
+            if(simTime() - last_time.at(id) > 10 && whitelist.find(id) == whitelist.end())
                 if(!erase(id)) EV <<"       Error: SeV_set erase failed - no ID: " << id << "!"<< endl;
         }
     }
@@ -206,6 +206,7 @@ protected:
     virtual void SeV_work_check();
     virtual bool on_data_check(WaveShortMessage*wsm, int srcId);
     virtual bool checkWSM(WaveShortMessage* wsm);
+    virtual int part_choose(vector<double> a);
     virtual int scheduling(double beta, double x_t);
     virtual void local_process(task myTask);
     virtual void send_data(task mytask, int rcvId, int serial);

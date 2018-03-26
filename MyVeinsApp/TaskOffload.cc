@@ -22,6 +22,7 @@
 #include <cstring>
 #include <random>
 #include <fstream>
+#include <time.h>
 #include "TaskOffload.h"
 using namespace std;
 
@@ -117,7 +118,10 @@ void TaskOffload::SeV_work_check()
 {
     for(int id:SeV_info.SeV_set)
         if(work_info.find(id) != work_info.end() && simTime().dbl() - work_info.at(id).start > time_limit)
+        {
             work_info.erase(id);
+            if(simTime().dbl() - SeV_info.last_time.at(id) > 5) SeV_info.erase(id);
+        }
     SeV_info.check(work_info);
 
 }
@@ -161,6 +165,19 @@ bool TaskOffload::checkWSM(WaveShortMessage* wsm)
     return true;
 }
 
+int TaskOffload::part_choose(vector<double> a)
+{
+    int id, num = 0, res = -1;
+    vector<int> tot;
+    for(double x:a)
+        if(x != 9999) num++;
+        else tot.push_back(num);
+    tot.push_back(10000);           // for the number after last tree
+    id = rand() % num;
+    for(int i = 0; i < tot.size(); i ++)
+        if(id + 1 <= tot.at(i)) return SeV_info.SeV_set.at(id + i);
+}
+
 int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorithm first
 {
     formal_out("scheduling...", 2);
@@ -172,20 +189,32 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
             utility.push_back(9999);    // avoid choosing the SeV which is processing my last job now
         else
         {
-            double xt1 = x_t > x_av ? 1.0:0.0;
+            //            double xt1 = x_t > x_av ? 1.0:0.0;      // 300s: worst                        half explore & half exploit
+            //            double xt1 = 0;                         // 200s: avucb between ucb & rdm      all explore
+            //            double xt1 = x_t > 4e5 ? 1.0:0.0;       // 200s: avucb & vucb almost same     more exploit
+            //            double xt1 = x_t > 3e5 ? 1.0:0.0;       // 200s: same as 4e5
+            double xt1 = x_t < 4e5 ? 0.0:
+                        (x_t > 8e5 ? 1.0:                         // 300s: avucb even worse than ucb
+                        2.5 * x_t / 1e6 - 1);                     // 200s: avucb same as ucb; .         the primitive expression of avucb
+
             double d_tn = simTime().dbl() - SeV_info.occur_time.at(id);
             double k = SeV_info.count.at(id);
             if(cur_ucb == avucb)
                 utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * (1 - xt1) * log(d_tn) / k) );
             else if(cur_ucb == vucb)
                 utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * log(d_tn) / k) );
-            else utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * log(simTime().dbl()) / k));
+            else if(cur_ucb == ucb)
+                utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * log(simTime().dbl()) / k));
+            //                utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * log(d_tn) / k) );
+            else utility.push_back(1);          // otherwise utility has no entry in rdm mode
         }
         string str = "SeV " + to_string(id) + ": u = " + to_string(utility.at(i));
         formal_out(str.c_str(), 3);
     }
 
     int vid = SeV_info.SeV_set[min_element(utility.begin(), utility.end()) - utility.begin()];
+    if(cur_ucb == rdm) vid = part_choose(utility);
+
     string str = "Choice: " + to_string(vid);
     formal_out(str.c_str(), 3);
     return vid;
@@ -205,8 +234,8 @@ void TaskOffload::local_process(task myTask)
         current_task_time = simTime() + task_time;
     }    
     myTask.delay = current_task_time.dbl() - myTask.start;        // recored the final delay
-    job_delay = myTask.delay;
-    emit(sig, job_delay);                                         // commented when caring about offloading delay
+    //    job_delay = myTask.delay;
+    //    emit(sig, job_delay);                                         // commented when caring about offloading delay
 }
 
 void TaskOffload::send_data(double size, int rcvId, int serial)
@@ -247,7 +276,7 @@ void TaskOffload::send_data(task myTask, int rcvId, int serial)
     populateWSM(pre_data, rcvId, serial);
     pre_data->setKind(onJ);
     pre_data->setWsmData(ss.str().c_str());
-    for(int i :{1,2,3,4,5,6})                         // resend 6 times to ensure the reliability!
+    for(int i:{1,2,3,4,5,6})                         // resend 6 times to ensure the reliability!
         sendDown(pre_data->dup());
     send_data(myTask.data_size, rcvId, serial);
 }
@@ -295,6 +324,8 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
         stringstream ss1;
         ss1 << "Not available! distance: " << curPosition.distance(position) << "; speed dif: " << curSpeed.distance(speed);
         formal_out(ss1.str().c_str(), 1);
+        //        if(SeV_info.if_exist(vehicleId)) SeV_info.erase(vehicleId);
+        if(SeV_info.if_exist(vehicleId)) SeV_info.last_time.at(vehicleId) -= 50;        // make it erased next second by check
         //        pos_spd();
     }
     display_SeV();
@@ -337,7 +368,9 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
         if(!SeV_info.if_connect(id) || SeV_info.SeV_set.size() == 1 && work_info.find(id) == work_info.end())   // find one unconnected SeV or only one SeV
         {
             rcvId = id;
-            out <<"Chosen SeV: "<< rcvId << " , a new SeV" << endl;
+            out <<"Chosen SeV: "<< rcvId << " , a new SeV; candidates: ";
+            for(int id:SeV_info.SeV_set) out<< id <<' ';
+            out << "        ";
             break;
         }
     }   
@@ -346,10 +379,11 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
         rcvId = scheduling(beta, x_t);  // all connected
         out <<"Chosen SeV: "<< rcvId << " from scheduling; candidates: ";
         for(int id:SeV_info.SeV_set) out<< id <<' ';
-        out <<endl;
+        out << "        ";
     }
     out.close();
     send_data(myTask, rcvId, 0);
+    findHost()->getDisplayString().updateWith("r=24,blue");
     work_info[rcvId] = myTask;
     map<int, int>::iterator ite;
     for(ite = bp_list.begin(); ite != bp_list.end(); ite ++)            // allow all data being received
@@ -389,7 +423,7 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
 
         job_delay = myTask.delay;
         emit(sig, job_delay);           // send record signal
-        string str = "Finish updating result from " + to_string(vehicleId) + "; delay = " + to_string(job_delay.dbl());
+        string str = "Got result from " + to_string(vehicleId) + "; delay = " + to_string(job_delay.dbl());
         formal_out(str.c_str(), 1);
         fstream out(file_name.c_str(), ios::app | ios::out);        // easy for check the reliability
         out <<"     "<< str << endl;
@@ -402,7 +436,7 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
 void TaskOffload::sendBeacon(WaveShortMessage* wsm)
 {
     formal_out("SeV: send beacon...", 2);
-    formal_out(("My sumo ID: " + external_id).c_str(), 2);
+    formal_out(("My sumo ID: " + external_id + "; CPU max freq: " + to_string(CPU_freq_max / 1e9) + " GHz").c_str(), 2);
     //    pos_spd();
     stringstream ss;
     ss<< myId <<' '<< idle_state <<' '<< curPosition.x <<' '<< curPosition.y <<' '<< curPosition.z <<' '<< curSpeed.x << ' '<< curSpeed.y <<' '<< curSpeed.z <<' ';
@@ -412,7 +446,9 @@ void TaskOffload::sendBeacon(WaveShortMessage* wsm)
     bc->setWsmData(ss.str().c_str());
     scheduleAt(simTime(), bc->dup());
     bc->setKind(selfB);
-    scheduleAt(simTime() + bc_interval, bc->dup());
+    if(string(wsm->getWsmData()) == "start") 
+        scheduleAt(simTime() + 0.95 * bc_interval, bc->dup());
+    else scheduleAt(simTime() + bc_interval, bc->dup());
 }
 
 void TaskOffload::processBrief(WaveShortMessage* wsm)
@@ -422,6 +458,7 @@ void TaskOffload::processBrief(WaveShortMessage* wsm)
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
     formal_out("process brief...", 2);
+    findHost()->getDisplayString().updateWith("r=24,green");        // show clearly the chosen SeV
     formal_out(ss.str().c_str(), 2);
     task myTask;
     ss >> myTask.data_size >> myTask.result_size >> myTask.cycle_per_bit >> myTask.start;
@@ -486,7 +523,8 @@ void TaskOffload::sendResult(WaveShortMessage* wsm)
 void TaskOffload::sendDup(WaveShortMessage* wsm)
 {
     wsm->setKind(onB);          // only for debug, to send beacon
-    sendDown(wsm->dup());    
+    findHost()->getDisplayString().updateWith("r=16,yellow");
+    for(int i:{1,2}) sendDown(wsm->dup());    
 }
 
 // following are event functions
@@ -503,8 +541,10 @@ void TaskOffload::initialize(int stage)
         //        node_type = rand() < 0.5*RAND_MAX? TaV:SeV;              // can be initialized by the position or other properties of nodes
         //        node_type = (external_id.c_str()[0] - '0') % 2 == 0 ? TaV:SeV;
         node_type = (external_id.c_str()[0] - '0') % 4 == 0? TaV:SeV;
-        cur_ucb = vucb;
-        file_name = "offload_log_" + to_string(myId);
+        //        cur_ucb = vucb;
+        long i = par("cur_ucb").longValue();
+        cur_ucb = !i ? ucb : (i == 1 ? vucb : (i == 2? avucb : rdm));
+        file_name = "offlog_" + to_string(i) + "_sumoid_" + external_id + "_myId_" + to_string(myId) + "_"+ to_string(simTime().dbl());  // choose among ucb and TaV
         current_task_time = 0;
         x_av = 6e5;                                              // for x_t,
         dx = 4e5;                                                // x_av - x_min
@@ -560,7 +600,7 @@ void TaskOffload::handlePositionUpdate(cObject* obj)
     //member variables such as currentPosition and currentSpeed are updated in the parent class
 
     formal_out("Handling position update...", 1);
-    findHost()->getDisplayString().updateWith("r=16,red");
+    // findHost()->getDisplayString().updateWith("r=16,red");
     sentMessage = true;
     WaveShortMessage* wsm = new WaveShortMessage();
     populateWSM(wsm);
