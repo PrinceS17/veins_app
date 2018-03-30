@@ -57,6 +57,7 @@ public:
     map<int, int> count;              // k(t, n)
     map<int, double> occur_time;      // t_n: occurrence time
     map<int, double> last_time;       // time of the last check
+    int total_count = 0;
 
 public:
     void print(bool kind, int vehicleId)
@@ -96,9 +97,10 @@ public:
         print(false, vehicleId);
         return true;
     }
-    void init(int vehicleId, double delay, double x_t)
+    void init(int vehicleId, double delay, double x_t, ucb_type cur_ucb)
     {
-        bit_delay[vehicleId] = delay / x_t;
+        if(cur_ucb == avucb) bit_delay[vehicleId] = delay / x_t;
+        else bit_delay[vehicleId] = delay;
         count[vehicleId] = 1;
         occur_time[vehicleId] = floor(simTime().dbl());         // make tn an interger to avoid t - tn < 1
         last_time[vehicleId] = simTime().dbl();
@@ -118,6 +120,7 @@ public:
         else bit_delay[vehicleId] = (bit_delay[vehicleId] * count[vehicleId] + delay ) / (count[vehicleId] + 1);
         count[vehicleId] ++;
         last_time[vehicleId] = simTime().dbl();
+        total_count ++;
     }
     void check(map<int, task> whitelist)        // protect id being processed from erasion
     {
@@ -154,6 +157,7 @@ public:
     void pos_spd();             // display current speed and position
     void display_SeV();         // display info of SeV
     int nextKind(int kind);     // find the right kind for on_data_check()
+    double calculate_scale(vector<task> vt);   // based on the first 10 result
 
 protected:
     simtime_t lastDroveAt;
@@ -174,7 +178,7 @@ protected:
     double CPU_percentage;          // [0.2, 0.5]
     bool idle_state;
     SeV_class SeV_info;
-    vector<task> task_vector;       // tasks recorded
+    vector<task> task_vector;       // tasks recorded at each end
     map<int, task> work_info;       // store from brief, to process data
     map<int, int> bp_list;          // block-pass list: block the too old, pass the next, see on_data_check()
     map<int, fType> Handler;

@@ -69,13 +69,17 @@ void TaskOffload::pos_spd()
 void TaskOffload::display_SeV()
 {
     formal_out("SeV information:", 2);
-    string str = "scale = 1e" + to_string((int)log10(scale));
+    string str = "scale = " + to_string(scale / 1e6) + " M";
     formal_out(str.c_str(), 2);
-    formal_out("id     delay/bit (us)      count     occur time     last time", 3);
+    if(cur_ucb == avucb) formal_out("id     delay/bit (us)      count     occur time     last time", 3);
+    else formal_out("id     delay (s)        count     occur time     last time", 3);
+    string temp;
     for(auto id:SeV_info.SeV_set)
     {
-        string str = to_string(id) + "      " + to_string(SeV_info.bit_delay.at(id) * 1e6) + "              " + to_string(SeV_info.count.at(id)) + "       " + to_string(SeV_info.occur_time.at(id)) + "        " + to_string(SeV_info.last_time.at(id));
-        formal_out(str.c_str(), 3);
+        if(cur_ucb == avucb)
+            temp = to_string(id) + "      " + to_string(SeV_info.bit_delay.at(id) * 1e6) + "              " + to_string(SeV_info.count.at(id)) + "       " + to_string(SeV_info.occur_time.at(id)) + "        " + to_string(SeV_info.last_time.at(id));
+        else temp = to_string(id) + "      " + to_string(SeV_info.bit_delay.at(id)) + "              " + to_string(SeV_info.count.at(id)) + "       " + to_string(SeV_info.occur_time.at(id)) + "        " + to_string(SeV_info.last_time.at(id));    
+        formal_out(temp.c_str(), 3);
     }    
 }
 
@@ -103,6 +107,18 @@ int TaskOffload::nextKind(int kind)
         }
     }
 }
+
+double TaskOffload::calculate_scale(vector<task> vt)
+{
+    vector<double> bitDelay;
+    for(auto t:vt)
+        if(cur_ucb == avucb) bitDelay.push_back(t.delay / t.data_size);
+        else bitDelay.push_back(t.delay);
+    double temp = *max_element(bitDelay.begin(), bitDelay.end());
+    formal_out((to_string(temp * 1e6) + " us").c_str(), 3);
+    return 0.96 / temp;
+}
+
 
 void TaskOffload::relay(WaveShortMessage* wsm)
 {
@@ -133,9 +149,10 @@ bool TaskOffload::on_data_check(WaveShortMessage* wsm, int srcId)
         if(srcId == myId) return false;
         else if(wsm->getRecipientAddress() != myId) 
         {
-            if(wsm->getKind() == onJ) relay(wsm);         // only relay job brief to reduce the msg amount
-            else if(wsm->getKind() == onD && uniform(0, 1) > 0.7)
-                relay(wsm);
+              // relay banned
+//            if(wsm->getKind() == onJ) relay(wsm);         // only relay job brief to reduce the msg amount
+//            else if(wsm->getKind() == onD && uniform(0, 1) > 0.7)
+//                relay(wsm);
             return false;
         }
     }
@@ -189,13 +206,13 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
             utility.push_back(9999);    // avoid choosing the SeV which is processing my last job now
         else
         {
-            //            double xt1 = x_t > x_av ? 1.0:0.0;      // 300s: worst                        half explore & half exploit
+//            double xt1 = x_t > x_av ? 1.0:0.0;      // 300s: worst                        half explore & half exploit
             //            double xt1 = 0;                         // 200s: avucb between ucb & rdm      all explore
             //            double xt1 = x_t > 4e5 ? 1.0:0.0;       // 200s: avucb & vucb almost same     more exploit
             //            double xt1 = x_t > 3e5 ? 1.0:0.0;       // 200s: same as 4e5
-            double xt1 = x_t < 4e5 ? 0.0:
-                        (x_t > 8e5 ? 1.0:                         // 300s: avucb even worse than ucb
-                        2.5 * x_t / 1e6 - 1);                     // 200s: avucb same as ucb; .         the primitive expression of avucb
+                        double xt1 = x_t < 4e5 ? 0.0:
+                                (x_t > 8e5 ? 1.0:               // 300s: avucb even worse than ucb
+                                        2.5 * x_t / 1e6 - 1);   // 200s: avucb same as ucb; .         the primitive expression of avucb
 
             double d_tn = simTime().dbl() - SeV_info.occur_time.at(id);
             double k = SeV_info.count.at(id);
@@ -208,7 +225,7 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
             //                utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * log(d_tn) / k) );
             else utility.push_back(1);          // otherwise utility has no entry in rdm mode
         }
-        string str = "SeV " + to_string(id) + ": u = " + to_string(utility.at(i));
+        string str = "SeV " + to_string(id) + ": u = " + to_string(utility.at(i)) + " ; scaled bit delay = " + to_string(SeV_info.bit_delay.at(id) * scale);
         formal_out(str.c_str(), 3);
     }
 
@@ -328,7 +345,7 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
         if(SeV_info.if_exist(vehicleId)) SeV_info.last_time.at(vehicleId) -= 50;        // make it erased next second by check
         //        pos_spd();
     }
-    display_SeV();
+    //    display_SeV();
 }
 
 void TaskOffload::handleOffload(WaveShortMessage* wsm)
@@ -339,7 +356,6 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     //    double x_t = 6e5;
     double x_t = uniform(x_av - dx, x_av + dx);
     task myTask = {x_t, x_t * alpha0, w0, simTime().dbl()};
-    task_vector.push_back(myTask);
     WaveShortMessage* tsk = new WaveShortMessage();     // schedule next task 
     populateWSM(tsk);
     tsk->setKind(selfG);
@@ -365,12 +381,15 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     rcvId = -9999;
     for(int id:SeV_info.SeV_set)
     {
-        if(!SeV_info.if_connect(id) || SeV_info.SeV_set.size() == 1 && work_info.find(id) == work_info.end())   // find one unconnected SeV or only one SeV
+        if((!SeV_info.if_connect(id) || SeV_info.SeV_set.size() == 1) && work_info.find(id) == work_info.end())   // find one unconnected SeV or only one SeV
         {
             rcvId = id;
-            out <<"Chosen SeV: "<< rcvId << " , a new SeV; candidates: ";
-            for(int id:SeV_info.SeV_set) out<< id <<' ';
-            out << "        ";
+            stringstream ss1;
+            ss1 <<"Chosen SeV: "<< rcvId << " , new or only SeV; candidates: ";  
+            for(int id:SeV_info.SeV_set) ss1 << id <<' ';
+            ss1 << "        ";
+            out << ss1.str();
+            formal_out(ss1.str().c_str(), 2);
             break;
         }
     }   
@@ -383,7 +402,7 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     }
     out.close();
     send_data(myTask, rcvId, 0);
-    findHost()->getDisplayString().updateWith("r=24,blue");
+    findHost()->getDisplayString().updateWith("r=20,blue");
     work_info[rcvId] = myTask;
     map<int, int>::iterator ite;
     for(ite = bp_list.begin(); ite != bp_list.end(); ite ++)            // allow all data being received
@@ -412,18 +431,20 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
         }
         task myTask = work_info.at(vehicleId);
         myTask.delay = simTime().dbl() - myTask.start;
-        if(scale < 0)
-            scale = pow(10, floor(log10(myTask.data_size / myTask.delay)));  // scale the u into [0, 1]
+        task_vector.push_back(myTask);
+//        if(scale < 0) scale = pow(10, floor(log10(myTask.data_size / myTask.delay)));  // scale the u into [0, 1]
+        if(SeV_info.total_count <= 10) scale = calculate_scale(task_vector);
+        
         if(!SeV_info.if_exist(vehicleId)) 
             formal_out(" Error: vehicle doesn't exist in SeV table now!", 1);   // following .count.at will throw an out-of-range error
         if(SeV_info.count.at(vehicleId) == 0)
-            SeV_info.init(vehicleId, myTask.delay, myTask.data_size);        // add occurrence time
+            SeV_info.init(vehicleId, myTask.delay, myTask.data_size, cur_ucb);        // add occurrence time
         else SeV_info.update(vehicleId, myTask.delay, myTask.data_size, cur_ucb);     // maintain u & k
         display_SeV();
 
         job_delay = myTask.delay;
         emit(sig, job_delay);           // send record signal
-        string str = "Got result from " + to_string(vehicleId) + "; delay = " + to_string(job_delay.dbl());
+        string str = "Got result from " + to_string(vehicleId) + "; delay = " + to_string(job_delay.dbl()) + "; data size = " + to_string(myTask.data_size / 1e6) + "Mbit";
         formal_out(str.c_str(), 1);
         fstream out(file_name.c_str(), ios::app | ios::out);        // easy for check the reliability
         out <<"     "<< str << endl;
@@ -458,7 +479,7 @@ void TaskOffload::processBrief(WaveShortMessage* wsm)
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
     formal_out("process brief...", 2);
-    findHost()->getDisplayString().updateWith("r=24,green");        // show clearly the chosen SeV
+    findHost()->getDisplayString().updateWith("r=20,green");        // show clearly the chosen SeV
     formal_out(ss.str().c_str(), 2);
     task myTask;
     ss >> myTask.data_size >> myTask.result_size >> myTask.cycle_per_bit >> myTask.start;
@@ -523,7 +544,7 @@ void TaskOffload::sendResult(WaveShortMessage* wsm)
 void TaskOffload::sendDup(WaveShortMessage* wsm)
 {
     wsm->setKind(onB);          // only for debug, to send beacon
-    findHost()->getDisplayString().updateWith("r=16,yellow");
+    findHost()->getDisplayString().updateWith("r=12,yellow");
     for(int i:{1,2}) sendDown(wsm->dup());    
 }
 
@@ -544,7 +565,7 @@ void TaskOffload::initialize(int stage)
         //        cur_ucb = vucb;
         long i = par("cur_ucb").longValue();
         cur_ucb = !i ? ucb : (i == 1 ? vucb : (i == 2? avucb : rdm));
-        file_name = "offlog_" + to_string(i) + "_sumoid_" + external_id + "_myId_" + to_string(myId) + "_"+ to_string(simTime().dbl());  // choose among ucb and TaV
+        file_name = "offlog_" + to_string(i) + "_sumoid_" + external_id + "_myId_" + to_string(myId) + "_"+ to_string(time(NULL));  // choose among ucb and TaV
         current_task_time = 0;
         x_av = 6e5;                                              // for x_t,
         dx = 4e5;                                                // x_av - x_min
