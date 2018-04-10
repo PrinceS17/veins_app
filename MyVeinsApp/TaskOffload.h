@@ -76,12 +76,13 @@ public:
         count[vehicleId] = 0;
         occur_time[vehicleId] = -1;
         last_time[vehicleId] = simTime().dbl();
-        if(cur_ucb == ucb)
+        if(cur_ucb == ucb) // || cur_ucb == vucb)       // only for test
             for(int id:SeV_set)
             {
                 bit_delay[id] = 0;
                 count[id] = 0;
-                occur_time[id] = -1;
+                occur_time[id] = simTime().dbl();
+                last_time[id] = simTime().dbl();
             }
         print(true, vehicleId);
     }
@@ -99,10 +100,10 @@ public:
     }
     void init(int vehicleId, double delay, double x_t, ucb_type cur_ucb)
     {
-        if(cur_ucb == avucb) bit_delay[vehicleId] = delay / x_t;
+        if(cur_ucb == avucb) bit_delay[vehicleId] = delay / x_t;     // only for test!
         else bit_delay[vehicleId] = delay;
         count[vehicleId] = 1;
-        occur_time[vehicleId] = floor(simTime().dbl());         // make tn an interger to avoid t - tn < 1
+        if(cur_ucb != ucb) occur_time[vehicleId] = floor(simTime().dbl());         // make tn an interger to avoid t - tn < 1
         last_time[vehicleId] = simTime().dbl();
     }
     bool if_exist(int vehicleId)
@@ -145,12 +146,13 @@ public:
     double speed_limit = 15;
     double time_limit = 2;      // time limit for work_info chck
     int serial_max = 2;         // only 2-hop communication is allowed
+    int num_rng = 20;           // as num-rngs in omnetpp.ini, 20 currently
     simtime_t job_delay;
 
     // input parameter, initial value, may vary to simulate
     double alpha0 = 0.05;       // y_t/x_t
     double w0 = 1000;           // typical value
-    double beta = 2;            // parameter for UCB
+    double beta = 1;            // parameter for UCB
     double scale = -1;          // scale for x_t
 
     void formal_out(const char* str, int lv);
