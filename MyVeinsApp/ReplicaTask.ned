@@ -19,14 +19,13 @@ import org.car2x.veins.modules.application.ieee80211p.BaseWaveApplLayer;
 
 // network description file for your Veins Application. Add parameters here
 
-simple TaskOffload extends BaseWaveApplLayer
+simple ReplicaTask extends BaseWaveApplLayer
 {       
-       	@class(TaskOffload);
-        int cur_ucb = default(0);	// for algorithms scan
+       	@class(ReplicaTask);
+        int K = default(2);			// # replica task 
         string appName = default("For Task　Offload!");
         @signal[sig](type = "simtime_t");
-        @statistic[sig_delay](title = "sig delay"; source = "sig"; record = vector, mean;interpolationmode = none);		// record: can be either vector or scalar, the former better
-        
+        @statistic[sig_delay](title = "sig delay"; source = "sig"; record = vector, mean;interpolationmode = none);		// record: can be either vector or scalar, the former better       
         @figure[last_delay](type = text; pos = 100,100; text = "last delay: N/A");
         
 }

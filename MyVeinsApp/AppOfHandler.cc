@@ -20,9 +20,9 @@
 
 #include <string>
 #include <cstring>
-#include <sstream>
-#include <vector>
-#include <algorithm>
+//#include <sstream>
+//#include <vector>
+//#include <algorithm>
 #include <random>
 #include "AppOfHandler.h"
 using namespace std;
@@ -43,6 +43,7 @@ using namespace std;
 #define onJ 10      // P: job brief
 #define onD 11      // R & P: data
 #define onT 12      // R & P: traffic info
+#define sd 13
 
 Define_Module(AppOfHandler);
 
@@ -67,29 +68,13 @@ double t_end;                // for end of caching
 
 // global variable
 simtime_t job_delay;
-stringstream ss_null("");
 
 // Poission Process Setting
 default_random_engine job_g, work_g;
 exponential_distribution<double> jobInterval_dstrb(lambda);         // intervals between jobs
 exponential_distribution<double> workload_dstrb(1 / work_mean);     // job workload
 
-void formal_out(const char * str, int lv)   // use output to debug
-{
-    switch(lv)
-    {
-    case 1:                     // event like onWSM
-        EV<<" "<< str <<"\n";
-        break;
-    case 2:                     // option like send beacon
-        EV<<"    "<< str <<"\n";
-        break;
-    case 3:                     // specific function like send EREQ
-        EV<<"       "<< str <<"\n";
-        break;
-    default: ;
-    }
-}
+void formal_out(const char*, int);
 
 bool speed_cmp(double vx, double vy, double vz, Coord curSpeed)     // speed appropriate: true; too large: false
 {
@@ -126,7 +111,7 @@ bool AppOfHandler::on_data_check(WaveShortMessage* wsm, int srcId)  // not pass:
     return true;
 }
 
-void AppOfHandler::checkWSM(WaveShortMessage* wsm)
+bool AppOfHandler::checkWSM(WaveShortMessage* wsm)
 {
     if(strlen(wsm->getWsmData()) < 50)
         formal_out(wsm->getWsmData(), 1);
@@ -137,15 +122,16 @@ void AppOfHandler::checkWSM(WaveShortMessage* wsm)
         formal_out((temp + "... for short").c_str(), 1);
     }
 
-    // discard 3-hop message or self message
-    if(wsm->getSerial() >= 3) 
+    if(current_state <= ST) return false;           // if still initializing
+    if(wsm->getSerial() >= 3)                       // discard 3-hop message or self message
     {
         formal_out("Discard 3-hop message!", 1);
-        return;
+        return false;
     }
 
-    if(NULL == wsm->getWsmData()) {formal_out("Error: void pointer!", 1); return;}              // check if void pointer
-    if(strlen(wsm->getWsmData()) <= 1) {formal_out("Error: receive too little data!", 1); return;}       // check data length        
+    if(NULL == wsm->getWsmData()) {formal_out("Error: void pointer!", 1); return false;}              // check if void pointer
+    if(strlen(wsm->getWsmData()) <= 1) {formal_out("Error: receive too little data!", 1); return false;}       // check data length   
+    return true;
 }
 
 vector<int> AppOfHandler::scheduling(vector<int> v0, int type)
@@ -181,7 +167,7 @@ vector<int> AppOfHandler::scheduling(vector<int> v0, int type)
 void AppOfHandler::send_data(int size, int rcvId, int serial, simtime_t time)        // send data of size wave short messages of 4k except the last wsm
 {
     formal_out("sending data...", 3);
-    int max_size = 4095;                    // max size of wsm data, except "D" at the start
+    int max_size = 4096;                    // max size of wsm data, except "D" at the start
     int num = (size + 2)/max_size + 1;      // number of wsm, 2 is "ed"
     int last_size = (size + 2)% max_size;   // last wsm size
     for(int i = 0; i < num; i ++)
@@ -299,6 +285,12 @@ void AppOfHandler::handleBeacon(WaveShortMessage* wsm)
     }  
 }
 
+void AppOfHandler::sendDup(WaveShortMessage* wsm)
+{
+    wsm->setKind(onB);          // only for debug, to send beacon
+    sendDown(wsm->dup());    
+}
+
 void AppOfHandler::handleTraffic(WaveShortMessage* wsm)
 {
     formal_out("traffic info...", 2);
@@ -309,6 +301,7 @@ void AppOfHandler::handleTraffic(WaveShortMessage* wsm)
         sentMessage = true;
         //repeat the received traffic update once in 2 seconds plus some random delay
         wsm->setSenderAddress(myId);
+        wsm->setKind(onT);
         wsm->setSerial(3);
         sendDown(wsm->dup());       // ? no wait time now
     }
@@ -398,17 +391,17 @@ void AppOfHandler::handleDISQ(WaveShortMessage* wsm)
 void AppOfHandler::checkEREQ(WaveShortMessage* wsm)
 {
     string temp = current_state == DISP? "DISP": (current_state == DISQ? "DISQ":"not DIS: " + to_string(current_state));
-    string str = "check EREQ ... current state is " + temp;
+    string str = "check EREQ ... current state is " + temp + "; ddl: " + to_string(t_disc + rtd);
     formal_out(str.c_str(), 2);
     if(current_state == DISQ)
     {
-        if(simTime() < t_disc +rtd)
+        if(simTime() + ereq_interval < t_disc + rtd)                    // another check for EREQ if time allows     
         {
-            if(simTime() + ereq_interval < t_disc + rtd)                    // another check for EREQ if time allows     
-                scheduleAt(simTime() + ereq_interval, wsm->dup());
+            scheduleAt(simTime() + ereq_interval, wsm->dup());
             wsm->setKind(0);
             sendDown(wsm->dup());                                           // send EREQ before t_disc+rtd
         }
+
         else 
         {                                                                   // read job_size and max_size from EREQ
             int vehicleId, job_size, max_size;
@@ -509,11 +502,15 @@ void AppOfHandler::sendBeacon(WaveShortMessage* wsm)
     for(int a:hop1_Neighbor) ss << a << ' ';
     WaveShortMessage * bc = new WaveShortMessage();
     populateWSM(bc);
-    bc->setKind(onB);
     bc->setWsmData(ss.str().c_str());               // set current beacon
-    sendDown(bc->dup());
+    
+//    bc->setKind(onB);
+//    sendDown(bc->dup());
+    bc->setKind(sd);
+    scheduleAt(simTime(), bc->dup());
+    
     bc->setKind(SEND_MY_BC_EVT);                    // schecule next beacon
-    scheduleAt(simTime() + my_bc_interval, bc);
+    scheduleAt(simTime() + my_bc_interval, bc->dup());
 }
 
 void AppOfHandler::processEREQ(WaveShortMessage* wsm)
@@ -626,7 +623,6 @@ void AppOfHandler::initialize(int stage) {
         WaveShortMessage* ini = new WaveShortMessage();
         if(node_type == PROCESSOR)
         {
-            // test
             Handler[onB] = &AppOfHandler::handleBeacon;
             Handler[onT] = &AppOfHandler::handleTraffic;
 
@@ -634,6 +630,9 @@ void AppOfHandler::initialize(int stage) {
             Handler[onQ] = &AppOfHandler::processEREQ;
             Handler[onJ] = &AppOfHandler::processJobBrief;
             Handler[onD] = &AppOfHandler::processData;
+//            
+            Handler[sd] = &AppOfHandler::sendDup;           // only for debug
+// for unit test of beaconing
             
             sendBeacon(ini); 
         }
@@ -647,33 +646,65 @@ void AppOfHandler::initialize(int stage) {
             Handler[onP] = &AppOfHandler::handleDISP;
             Handler[ENTER_SCH_EVT] = &AppOfHandler::sendData;
             Handler[onD] = &AppOfHandler::handleResultData;
-
+//            
             generateJob(ini);              // virtual job, to starting normal job caching
             t_disc = simTime().dbl();
         }
     }
 }
 
+
+void AppOfHandler::finish() {
+    BaseWaveApplLayer::finish();
+    //statistics recording goes here
+
+}
+
+void AppOfHandler::onBSM(BasicSafetyMessage* bsm) {
+    //Your application has received a beacon message from another car or RSU
+    //code for handling the message goes here
+
+}
+
+void AppOfHandler::onWSA(WaveServiceAdvertisment* wsa) {
+    //Your application has received a service advertisement from another car or RSU
+    //code for handling the message goes here, see TraciDemo11p.cc for examples
+
+    // example in TraCIDemo means that change channel according to wsa and not use more information
+    if (currentSubscribedServiceId == -1) {
+        mac->changeServiceChannel(wsa->getTargetChannel());
+        currentSubscribedServiceId = wsa->getPsid();
+        if  (currentOfferedServiceId != wsa->getPsid()) {
+            stopService();
+            startService((Channels::ChannelNumber) wsa->getTargetChannel(), wsa->getPsid(), "Mirrored Traffic Service");
+        }
+    }
+}
+
+
 void AppOfHandler::onWSM(WaveShortMessage* wsm) {
     //Your application has received a data message from another car or RSU
     //code for handling the message goes here, see TraciDemo11p.cc for examples, 
-    
+
+    if(!checkWSM(wsm)) return;
     if(Handler.find(wsm->getKind()) != Handler.end())       // cannot find => type not maching
         (this->*Handler[wsm->getKind()])(wsm);
 }
 
+
+
 void AppOfHandler::handleSelfMsg(cMessage* msg) {
     //this method is for self messages (mostly timers)
     //it is important to call the BaseWaveApplLayer function for BSM and WSM transmission
-    
+
     formal_out("Handling self message...", 1);
     if (WaveShortMessage* wsm = dynamic_cast<WaveShortMessage*>(msg)) 
     {
-        (this->*Handler[msg->getKind()])(wsm);
+        if(Handler.find(wsm->getKind()) != Handler.end())
+            (this->*Handler[wsm->getKind()])(wsm);
         delete(wsm);        
     }
-    else 
-        BaseWaveApplLayer::handleSelfMsg(msg);
+    else BaseWaveApplLayer::handleSelfMsg(msg);
 }
 
 

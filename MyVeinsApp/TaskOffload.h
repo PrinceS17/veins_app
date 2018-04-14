@@ -23,17 +23,13 @@
 
 #include <omnetpp.h>
 #include <cstdlib>
-#include <map>
-#include <vector>
-#include <algorithm>
-#include <sstream>
 #include "veins/modules/application/ieee80211p/BaseWaveApplLayer.h"
+#include "ToolFunction.h"         // need definition of enum_type for node_type
 
 using namespace omnetpp;
 using namespace std;
 
-enum enum_type {TaV, SeV};
-enum ucb_type {ucb, vucb, avucb, rdm};
+//enum ucb_type {ucb, vucb, avucb, rdm};
 enum state_type {PB, PT, SR, HO, UR};                     // state name is short for the function it should trigger, e.g. PB -> processBrief
 
 class TaskOffload;
@@ -117,8 +113,8 @@ public:
     void update(int vehicleId, double delay, double x_t, ucb_type cur_ucb)
     {
         if(cur_ucb == avucb)
-            bit_delay[vehicleId] = (bit_delay[vehicleId] * count[vehicleId] + delay / x_t) / (count[vehicleId] + 1);
-        else bit_delay[vehicleId] = (bit_delay[vehicleId] * count[vehicleId] + delay ) / (count[vehicleId] + 1);
+            bit_delay[vehicleId] = (bit_delay[vehicleId] * (double)count[vehicleId] + delay / x_t) / ((double)count[vehicleId] + 1);
+        else bit_delay[vehicleId] = (bit_delay[vehicleId] * (double)count[vehicleId] + delay ) / ((double)count[vehicleId] + 1);
         count[vehicleId] ++;
         last_time[vehicleId] = simTime().dbl();
         total_count ++;
@@ -155,7 +151,8 @@ public:
     double beta = 1;            // parameter for UCB
     double scale = -1;          // scale for x_t
 
-    void formal_out(const char* str, int lv);
+//    void formal_out(const char* str, int lv);
+    WaveShortMessage* setWsm(int kind, string data, int rcvId, int serial);
     void pos_spd();             // display current speed and position
     void display_SeV();         // display info of SeV
     int nextKind(int kind);     // find the right kind for on_data_check()
