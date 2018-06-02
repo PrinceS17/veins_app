@@ -35,7 +35,8 @@ public:
     Pid(stringstream& ss) { ss >> id >> time; }
     void write(stringstream& ss) { ss << id <<' '<< time <<' '; }
     Pid transform(int vid) { return Pid(vid, time); }
-    bool operator < (const Pid& pid)const { return (time < pid.time); }     // use time as the comparable basis
+    bool operator < (const Pid& pid)const { return (time < pid.time || (time == pid.time && id < pid.id)); }     // use time as the comparable basis
+    bool operator == (const Pid& pid) const { return (time == pid.time && id == pid.id); }  // for find?
 };
 
 class SeV_class
@@ -50,12 +51,18 @@ public:
     int total_count = 0;            // actually count of success
 
 public:
+    void printF(int id)
+    {
+        EV << "     ";
+        for(auto x:F.at(id)) EV << x << ' ';
+        EV << endl;
+    }
     double average_delay(int id)
     {
         double sum = 0;
         for(int i = 0; i < m; i ++)
-            if(!i) sum += (F.at(id).at(i) * ((double)i + 0.5) / (double)m);
-            else sum += ((F.at(id).at(i) - F.at(id).at(i - 1)) * ((double)i + 0.5) / (double)m);
+            if(!i) sum += F.at(id).at(i) * ((double)i + 0.5) / (double)m;
+            else sum += (F.at(id).at(i) - F.at(id).at(i - 1)) * ((double)i + 0.5) / (double)m;
         return sum;
     }
     bool if_exist(int id)
@@ -98,12 +105,21 @@ public:
         last_time[id] = simTime().dbl();
         total_count ++;
     }
-    void check()        // hard to get the map from id to task!
+    void reset()
     {
         vector<int> temp_set(SeV_set);
         for(int id:temp_set)
         {
-            if(simTime() - last_time.at(id) > 10)
+            erase(id);
+            push_back(id);
+        }
+    }
+    void check(vector<int> white_list)        // hard to get the map from id to task!
+    {
+        vector<int> temp_set(SeV_set);
+        for(int id:temp_set)
+        {
+            if(simTime() - last_time.at(id) > 10 && find(white_list.begin(), white_list.end(), id) == white_list.end())
                 if(!erase(id)) EV <<"       Error: SeV set erase failed, no this ID: " << id << "!" << endl;
         }
     }
@@ -119,11 +135,15 @@ public:
     double task_interval = 1;
     double Crange = 300;
     double speed_limit = 15;
+    double ug_speed_limit = 40;
     double time_limit = 2;      // over it the task in work_info will be erased
+    double delay_limit;
     int serial_max = 2;         // preserve the old
     int num_rng = 20;
+    int intime_count = 0;
     int task_count = 0;         // count tasks generated
     simtime_t job_delay;
+    double reliability;
 
     double alpha0 = 0.05;
     double w0 = 1000;
@@ -132,6 +152,7 @@ public:
 
     WaveShortMessage* setWsm(int kind, string data, int rcvId, int serial);     // only kind is necessary
     void display_SeV();
+    void display_bp_list();
     double calculate_scale(vector<task> vt);
 
 protected:
@@ -142,6 +163,7 @@ protected:
     // my own definitions
     enum_type node_type;
     simsignal_t sig;
+    simsignal_t sig_r;
     string file_name;           // output name
     string external_id;         // the sumo id
     simtime_t current_task_time;
@@ -172,6 +194,7 @@ protected:
     // handler for TaV
     virtual void handleBeacon(WaveShortMessage* wsm);
     virtual void handleOffload(WaveShortMessage* wsm);
+    virtual void sendDataDup(WaveShortMessage* wsm);
     virtual void updateResult(WaveShortMessage* wsm);
 
     // handler for SeV

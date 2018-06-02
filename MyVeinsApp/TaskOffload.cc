@@ -1,7 +1,7 @@
 //
-// Copyright (C) 2016 David Eckhoff <david.eckhoff@fau.de>
+// Copyright (C) 2018 Jinhui Song <jssong9617@gmail.com>
 //
-// Documentation for these modules is at http://veins.car2x.org/
+// Documentation for the module is at https://github.com/PrinceS17/veins_app
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -42,10 +42,8 @@ Define_Module(TaskOffload);
 
 void TaskOffload::pos_spd()
 {
-    stringstream ss, ss1;
-    ss << "Current position: ( " << curPosition.x <<' '<< curPosition.y <<' '<< curPosition.z <<" )";
-    formal_out(ss.str().c_str(), 3);
-    ss1 << "Current speed: ( " << curSpeed.x <<' '<< curSpeed.y <<' '<< curSpeed.z <<" )";
+    stringstream ss1;
+    ss1 << "my position: " << curPosition << "; my speed: "<< curSpeed;
     formal_out(ss1.str().c_str(), 3);
 }
 
@@ -221,7 +219,7 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
 void TaskOffload::local_process(task myTask)
 {
     formal_out("locally process...", 3);
-    CPU_percentage = uniform(0.2, 0.5, myId % num_rng);
+    CPU_percentage = uniform(0.2, 0.5 );
     double task_time =  myTask.data_size * myTask.cycle_per_bit / (CPU_freq_max * CPU_percentage);
     if(current_task_time > simTime())
         current_task_time += task_time;
@@ -264,7 +262,7 @@ void TaskOffload::send_data(double size, int rcvId, int serial)
 
 void TaskOffload::send_data(task myTask, int rcvId, int serial)
 {
-    formal_out("sending task brief...", 3);
+    formal_out(("sending task brief to " + to_string(rcvId) + "...").c_str(), 3);
     stringstream ss;
     ss<< myId <<' '<< myTask.data_size <<' '<< myTask.result_size <<' '<< myTask.cycle_per_bit <<' '<<myTask.start;
     WaveShortMessage* pre_data = new WaveShortMessage();
@@ -281,6 +279,7 @@ void TaskOffload::send_data(task myTask, int rcvId, int serial)
 void TaskOffload::handleTraffic(WaveShortMessage* wsm)
 {
     formal_out("traffic info...", 2);
+    if (mobility == NULL) return;               // used for UAV
     const char* wdata = wsm->getWsmData();
     findHost()->getDisplayString().updateWith("r=16,green");
     if (mobility->getRoadId()[0] != ':') traciVehicle->changeRoute(wdata, 9999);
@@ -309,7 +308,8 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
     Coord position, speed;
     bool ifIdle;
     ss >> vehicleId >> ifIdle >> position.x >> position.y >> position.z >> speed.x >> speed.y >> speed.z;
-    bool ifAvailable = curPosition.distance(position) < Crange && curSpeed.distance(speed) < speed_limit;
+    bool ifAvailable = (position.z < 10 && curPosition.distance(position) < Crange && curSpeed.distance(speed) < speed_limit)
+                                    || ((position.z >= 10 || curPosition.z > 10) && curSpeed.distance(speed) < ug_speed_limit);
     if(SeV_info.if_exist(vehicleId) && ifAvailable)
         SeV_info.last_time.at(vehicleId) = simTime().dbl();  
     else if(!SeV_info.if_exist(vehicleId) && ifAvailable)
@@ -327,10 +327,12 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
 {
 
     formal_out("TaV: generate tasks...", 2);
-    formal_out(("My sumo ID: " + external_id).c_str(), 2);
+    stringstream ss1;
+    ss1 << "My sumo ID: " << external_id <<"; position: "<< curPosition;
+    formal_out(ss1.str().c_str(), 2);
 
-    //        double x_t = 6e5;   // only for test
-    double x_t = uniform(x_av - dx, x_av + dx, myId % num_rng);
+    double x_t = 6e5;   // only for test
+    //    double x_t = uniform(x_av - dx, x_av + dx, myId % num_rng);
     task myTask = {x_t, x_t * alpha0, w0, simTime().dbl()};
     WaveShortMessage* tsk = new WaveShortMessage();         // schedule next task 
     populateWSM(tsk);
@@ -368,6 +370,7 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     send_data(myTask, rcvId, 0);
     findHost()->getDisplayString().updateWith("r=20,blue");
     work_info[rcvId] = myTask;
+    task_count ++;
     map<int, int>::iterator ite;
     for(ite = bp_list.begin(); ite != bp_list.end(); ite ++)            // allow all data being received
         ite->second = selfG;
@@ -401,8 +404,15 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
             SeV_info.init(vehicleId, myTask.delay, myTask.data_size, cur_ucb);        // add occurrence time
         else SeV_info.update(vehicleId, myTask.delay, myTask.data_size, cur_ucb);     // maintain u & k
         display_SeV();
+
+
         job_delay = myTask.delay;
+        if(job_delay < delay_limit) intime_count ++;
+        reliability = (double)intime_count / (double)task_count;
+        //        reliability = (double)SeV_info.total_count / (double)task_count;
         emit(sig, job_delay);           // send record signal
+        emit(sig_r, reliability);
+
         string str = "Got result from " + to_string(vehicleId) + "; delay = " + to_string(job_delay.dbl()) + "; data size = " + to_string(myTask.data_size / 1e6) + "Mbit";
         formal_out(str.c_str(), 1);
         fstream out(file_name.c_str(), ios::app | ios::out);        // easy for check the reliability      
@@ -416,23 +426,24 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
 void TaskOffload::sendBeacon(WaveShortMessage* wsm)
 {
     formal_out("SeV: send beacon...", 2);
-    formal_out(("My sumo ID: " + external_id + "; CPU max freq: " + to_string(CPU_freq_max / 1e9) + " GHz").c_str(), 2);
-    stringstream ss;
+    stringstream ss, ss1;
+    ss1 << "My sumo ID: "<< external_id <<"; CPU max freq: "<< (CPU_freq_max/1e9) <<" GHz; pos: " << curPosition;
+    formal_out(ss1.str().c_str(), 2);
     ss<< myId <<' '<< idle_state <<' '<< curPosition.x <<' '<< curPosition.y <<' '<< curPosition.z <<' '<< curSpeed.x << ' '<< curSpeed.y <<' '<< curSpeed.z <<' ';
-//    WaveShortMessage* bc = new WaveShortMessage();
-//    populateWSM(bc);
-//    bc->setKind(selfDup);
-//    bc->setWsmData(ss.str().c_str());
-//    
-//    WaveShortMessage a(setWsm(selfDup, ss.str()));
-//    WaveShortMessage* bc = a.dup();
+    //    WaveShortMessage* bc = new WaveShortMessage();
+    //    populateWSM(bc);
+    //    bc->setKind(selfDup);
+    //    bc->setWsmData(ss.str().c_str());
+    //    
+    //    WaveShortMessage a(setWsm(selfDup, ss.str()));
+    //    WaveShortMessage* bc = a.dup();
     WaveShortMessage *bc = setWsm(selfDup, ss.str());
     scheduleAt(simTime(), bc->dup());
     bc->setKind(selfB);
     if(string(wsm->getWsmData()) == "start") 
         scheduleAt(simTime() + 0.95 * bc_interval, bc->dup());
     else scheduleAt(simTime() + bc_interval + uniform(-0.03, 0.03), bc->dup());         // avoid collision
-    CPU_percentage = uniform(0.2, 0.5, myId % num_rng);     // randomly change percentage at each period
+    CPU_percentage = uniform(0.2, 0.5 );     // randomly change percentage at each period
 
 }
 
@@ -442,7 +453,8 @@ void TaskOffload::processBrief(WaveShortMessage* wsm)
     int vehicleId;
     ss >> vehicleId;
     if(!on_data_check(wsm, vehicleId)) return;
-    formal_out("process brief...", 2);
+    if(curPosition.z > 10) formal_out("process brief: UAV chosen...", 2);
+    else formal_out("process brief...", 2);
     findHost()->getDisplayString().updateWith("r=20,green");        // show clearly the chosen SeV
     formal_out(ss.str().c_str(), 2);
     task myTask;
@@ -507,6 +519,7 @@ void TaskOffload::sendDup(WaveShortMessage* wsm)
 {
     wsm->setKind(onB);          // to send beacon
     findHost()->getDisplayString().updateWith("r=12,yellow");
+
     sendDown(wsm->dup());
 }
 
@@ -520,10 +533,15 @@ void TaskOffload::initialize(int stage)
         sentMessage = false;
         lastDroveAt = simTime();
         currentSubscribedServiceId = -1;
-        external_id = mobility->getExternalId();
-        //        node_type = rand() < 0.5*RAND_MAX? TaV:SeV;              // can be initialized by the position or other properties of nodes
+
+        //        node_type = rand() < 0.5*RAND_MAX? TaV:SeV;               // can be initialized by the position or other properties of nodes
         //        node_type = (external_id.c_str()[0] - '0') % 2 == 0 ? TaV:SeV;
+        if(NULL == mobility) external_id = "40";                            // use UAV as TaV
+        else external_id = mobility->getExternalId();
         node_type = (external_id.c_str()[0] - '0') % 4 == 0? TaV:SeV;
+
+        //        node_type = myId/6 % 2 == 0? TaV:SeV;
+        delay_limit = par("delay_limit").doubleValue();
         long i = par("cur_ucb").longValue();
         cur_ucb = !i ? ucb : (i == 1 ? vucb : (i == 2? avucb : rdm));
         file_name = "offlog_" + to_string(i) + "_sumoid_" + external_id + "_myId_" + to_string(myId) + "_"+ to_string(time(NULL));  // choose among ucb and TaV
@@ -533,6 +551,7 @@ void TaskOffload::initialize(int stage)
         CPU_freq_max = uniform(2, 6, myId % num_rng) * 1e9;
         idle_state = true;
         sig = registerSignal("sig");
+        sig_r = registerSignal("sig_r");
     }
     else if(stage == 1)
     {
@@ -551,7 +570,8 @@ void TaskOffload::initialize(int stage)
         }
         else
         {
-            fstream out(file_name.c_str(), ios::app | ios::out);
+            fstream out;
+            if(external_id.c_str()[0] == '0') out.open(file_name.c_str(), ios::app | ios::out);
             out <<" T  Chosen      Candidates            From    Delay    Data size"<< endl;
 
             Handler[selfG] = &TaskOffload::handleOffload;
@@ -582,6 +602,8 @@ void TaskOffload::handlePositionUpdate(cObject* obj)
     //member variables such as currentPosition and currentSpeed are updated in the parent class
 
     formal_out("Handling position update...", 1);
+    if(mobility == NULL) return;                // for UAV
+
     // findHost()->getDisplayString().updateWith("r=16,red");
     sentMessage = true;
     WaveShortMessage* wsm = new WaveShortMessage();

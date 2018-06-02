@@ -1,7 +1,7 @@
 //
-// Copyright (C) 2016 David Eckhoff <david.eckhoff@fau.de>
+// Copyright (C) 2018 Jinhui Song <jssong9617@gmail.com>
 //
-// Documentation for these modules is at http://veins.car2x.org/
+// Documentation for the module is at https://github.com/PrinceS17/veins_app
 //
 // This program is free software; you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -101,6 +101,7 @@ public:
         count[vehicleId] = 1;
         if(cur_ucb != ucb) occur_time[vehicleId] = floor(simTime().dbl());         // make tn an interger to avoid t - tn < 1
         last_time[vehicleId] = simTime().dbl();
+        total_count ++;
     }
     bool if_exist(int vehicleId)
     {
@@ -140,18 +141,25 @@ public:
     double task_interval = 1;   // periodically generate here
     double Crange = 300;        // communication range
     double speed_limit = 15;
+    double ug_speed_limit = 40; // delta speed for uav and vehicle
     double time_limit = 2;      // time limit for work_info chck
+    double delay_limit;
     int serial_max = 2;         // only 2-hop communication is allowed
     int num_rng = 20;           // as num-rngs in omnetpp.ini, 20 currently
+    int intime_count = 0;       // # tasks within delay limit 
+    int task_count = 0;
+    
+    // statistic results
     simtime_t job_delay;
-
+    double reliability;         // # success tasks / # task count
+    
     // input parameter, initial value, may vary to simulate
     double alpha0 = 0.05;       // y_t/x_t
     double w0 = 1000;           // typical value
     double beta = 1;            // parameter for UCB
     double scale = -1;          // scale for x_t
 
-//    void formal_out(const char* str, int lv);
+    //    void formal_out(const char* str, int lv);
     WaveShortMessage* setWsm(int kind, string data, int rcvId, int serial);
     void pos_spd();             // display current speed and position
     void display_SeV();         // display info of SeV
@@ -167,7 +175,6 @@ protected:
     enum_type node_type;
     state_type cur_state;           // Mealy machine not work for multi-TaV, replaced by bp_list
     ucb_type cur_ucb;
-    simsignal_t sig;
     string file_name;               // output name
     string external_id;             // the sumo id
     simtime_t current_task_time;
@@ -181,7 +188,11 @@ protected:
     map<int, task> work_info;       // store from brief, to process data
     map<int, int> bp_list;          // block-pass list: block the too old, pass the next, see on_data_check()
     map<int, fType> Handler;
-
+    
+    // signal for results
+    simsignal_t sig;                // signal for job delay
+    simsignal_t sig_r;              // signal for reliability
+    
 protected:
     virtual void onBSM(BasicSafetyMessage* bsm);
     virtual void onWSM(WaveShortMessage* wsm);

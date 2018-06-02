@@ -23,10 +23,12 @@ simple TaskOffload extends BaseWaveApplLayer
 {       
        	@class(TaskOffload);
         int cur_ucb = default(0);	// for algorithms scan
+        double delay_limit = default(0.8);
         string appName = default("For Task　Offload!");
         @signal[sig](type = "simtime_t");
+        @signal[sig_r](type = "double");
         @statistic[sig_delay](title = "sig delay"; source = "sig"; record = vector, mean;interpolationmode = none);		// record: can be either vector or scalar, the former better
-        
+        @statistic[reliability](title = "reliability"; source = "sig_r"; record = vector, mean;interpolationmode = none);	
         @figure[last_delay](type = text; pos = 100,100; text = "last delay: N/A");
         
 }
