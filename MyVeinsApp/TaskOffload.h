@@ -72,7 +72,7 @@ public:
         count[vehicleId] = 0;
         occur_time[vehicleId] = -1;
         last_time[vehicleId] = simTime().dbl();
-        if(cur_ucb == ucb) // || cur_ucb == vucb)       // only for test
+        if(cur_ucb == ucb || cur_ucb == aucb) // || cur_ucb == vucb)       // only for test
             for(int id:SeV_set)
             {
                 bit_delay[id] = 0;
@@ -96,10 +96,10 @@ public:
     }
     void init(int vehicleId, double delay, double x_t, ucb_type cur_ucb)
     {
-        if(cur_ucb == avucb) bit_delay[vehicleId] = delay / x_t;     // only for test!
+        if(cur_ucb == avucb || cur_ucb == aucb) bit_delay[vehicleId] = delay / x_t;     // only for test!
         else bit_delay[vehicleId] = delay;
         count[vehicleId] = 1;
-        if(cur_ucb != ucb) occur_time[vehicleId] = floor(simTime().dbl());         // make tn an interger to avoid t - tn < 1
+        if(cur_ucb == avucb || cur_ucb == vucb) occur_time[vehicleId] = floor(simTime().dbl());         // make tn an interger to avoid t - tn < 1
         last_time[vehicleId] = simTime().dbl();
         total_count ++;
     }
@@ -113,7 +113,7 @@ public:
     }
     void update(int vehicleId, double delay, double x_t, ucb_type cur_ucb)
     {
-        if(cur_ucb == avucb)
+        if(cur_ucb == avucb || cur_ucb == aucb)
             bit_delay[vehicleId] = (bit_delay[vehicleId] * (double)count[vehicleId] + delay / x_t) / ((double)count[vehicleId] + 1);
         else bit_delay[vehicleId] = (bit_delay[vehicleId] * (double)count[vehicleId] + delay ) / ((double)count[vehicleId] + 1);
         count[vehicleId] ++;
@@ -144,6 +144,8 @@ public:
     double ug_speed_limit = 40; // delta speed for uav and vehicle
     double time_limit = 2;      // time limit for work_info chck
     double delay_limit;
+    double x_low;               // x- for x_t normalization
+    double x_high;
     int serial_max = 2;         // only 2-hop communication is allowed
     int num_rng = 20;           // as num-rngs in omnetpp.ini, 20 currently
     int intime_count = 0;       // # tasks within delay limit 
@@ -183,6 +185,7 @@ protected:
     double CPU_freq_max;            // [2, 6] GHz
     double CPU_percentage;          // [0.2, 0.5]
     bool idle_state;
+    bool ifDataAv;                  // if cur_ucb == avucb || cur_ucb == aucb
     SeV_class SeV_info;
     vector<task> task_vector;       // tasks recorded at each end
     map<int, task> work_info;       // store from brief, to process data

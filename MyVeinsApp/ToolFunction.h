@@ -1,4 +1,4 @@
-/* Editor: Jinhui Song; Date: 4.13.2019; 
+/* Editor: Jinhui Song; Date: 4.13.2019; Email: jssong9617@gmail.com
 Update: remove bitset.h and time.h. 
 
 Select the sub set the given SeV set which has the minimum average delay.
@@ -23,8 +23,9 @@ using namespace std;
 
 #define selfB 2
 #define selfG 3
-#define selfDup 4
-#define selfR 5
+#define selfD 4
+#define selfDup 5
+#define selfR 6
 #define onB 11
 #define onT 12
 #define onD 13
@@ -32,7 +33,7 @@ using namespace std;
 #define over 20
 
 enum enum_type {TaV, SeV};
-enum ucb_type {ucb, vucb, avucb, rdm};
+enum ucb_type {ucb, vucb, avucb, aucb, rdm};
 
 void formal_out(const char*, int );
 int nextKind(int, enum_type);

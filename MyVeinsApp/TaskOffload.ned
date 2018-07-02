@@ -23,6 +23,8 @@ simple TaskOffload extends BaseWaveApplLayer
 {       
        	@class(TaskOffload);
         int cur_ucb = default(0);	// for algorithms scan
+        double x_low = default(0.24);
+        double x_high = default(0.96);
         double delay_limit = default(0.8);
         string appName = default("For Task　Offload!");
         @signal[sig](type = "simtime_t");

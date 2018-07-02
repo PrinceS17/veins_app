@@ -59,15 +59,15 @@ WaveShortMessage* TaskOffload::setWsm(int kind, string data, int rcvId = 0, int 
 void TaskOffload::display_SeV()
 {
     formal_out("SeV information:", 2);
-    string str = cur_ucb == avucb? "scale = " + to_string(scale / 1e6) + " M":
+    string str = ifDataAv ? "scale = " + to_string(scale / 1e6) + " M":
             "scale = " + to_string(scale);
     formal_out(str.c_str(), 2);
-    if(cur_ucb == avucb) formal_out("id     delay/bit (us)      count     occur time     last time", 3);
+    if(ifDataAv) formal_out("id     delay/bit (us)      count     occur time     last time", 3);
     else formal_out("id     delay (s)        count     occur time     last time", 3);
     string temp;
     for(auto id:SeV_info.SeV_set)
     {
-        if(cur_ucb == avucb)     // for test
+        if(ifDataAv)     // for test
             temp = to_string(id) + "      " + to_string(SeV_info.bit_delay.at(id) * 1e6) + "              " + to_string(SeV_info.count.at(id)) + "       " + to_string(SeV_info.occur_time.at(id)) + "        " + to_string(SeV_info.last_time.at(id));
         else temp = to_string(id) + "      " + to_string(SeV_info.bit_delay.at(id)) + "              " + to_string(SeV_info.count.at(id)) + "       " + to_string(SeV_info.occur_time.at(id)) + "        " + to_string(SeV_info.last_time.at(id));    
         formal_out(temp.c_str(), 3);
@@ -103,10 +103,10 @@ double TaskOffload::calculate_scale(vector<task> vt)
 {
     vector<double> bitDelay;
     for(auto t:vt)
-        if(cur_ucb == avucb) bitDelay.push_back(t.delay / t.data_size);              // only for test!!!
+        if(ifDataAv) bitDelay.push_back(t.delay / t.data_size);              // only for test!!!
         else bitDelay.push_back(t.delay);
     double temp = *max_element(bitDelay.begin(), bitDelay.end());
-    if(cur_ucb == avucb) formal_out((to_string(temp * 1e6) + " us").c_str(), 2);
+    if(ifDataAv) formal_out((to_string(temp * 1e6) + " us").c_str(), 2);
     else formal_out((to_string(temp) + " s").c_str(), 2);
     return 1 / temp;    // before: 0.96
 }
@@ -182,8 +182,13 @@ int TaskOffload::part_choose(vector<double> a)
 
 int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorithm first
 {
-    formal_out("scheduling...", 2);
+    stringstream ss1;
     vector<double> utility;
+    double xt1 = x_t / 1e6 < x_low ? 0.0:
+                (x_t / 1e6 > x_high ? 1.0:
+                (x_t / 1e6 - x_low) / (x_high - x_low));   
+    ss1 << "scheduling: x_low = " << x_low << "; x_high = " << x_high << "; x_t/1e6 = " << x_t/1e6 << "; xt1 = " << xt1;
+    formal_out(ss1.str().c_str(), 2);
     for(int i = 0; i < SeV_info.SeV_set.size(); i ++)
     {
         int id = SeV_info.SeV_set.at(i);
@@ -191,22 +196,19 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
             utility.push_back(9999);    // avoid choosing the SeV which is processing my last job now
         else
         {
-            double xt1 = x_t > x_av ? 1.0:0.0;      // 300s: worst                        half explore & half exploit
-            //            double xt1 = 0;                         // for same x_t; 200s: avucb between ucb & rdm      all explore
-            //            double xt1 = x_t < 4e5 ? 0.0:
-            //                    (x_t > 8e5 ? 1.0:               // 300s: avucb even worse than ucb
-            //                            2.5 * x_t / 1e6 - 1);   // 200s: avucb same as ucb; .         the primitive expression of avucb 
-
+            
             double d_tn = simTime().dbl() - SeV_info.occur_time.at(id);     // for UCB, the occur time is the push back time
             double k = SeV_info.count.at(id);
-            if(cur_ucb == avucb)
-                utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(2* beta * (1 - xt1) * log(d_tn) / k) );
+            if(ifDataAv)
+                utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * (1 - xt1) * log(d_tn) / k) );
             else if(cur_ucb == vucb || cur_ucb == ucb)
                 utility.push_back( SeV_info.bit_delay.at(id) * scale - sqrt(beta * log(d_tn) / k) );    // right one for vucb
             else utility.push_back(1);          // otherwise utility has no entry in rdm mode
         }
         string str = "SeV " + to_string(id) + ": u = " + to_string(utility.at(i)) + " ; scaled bit delay = " + to_string(SeV_info.bit_delay.at(id) * scale);
-        formal_out(str.c_str(), 3);
+        stringstream ss2;
+        ss2 << "SeV: " << id << "; u= " << utility.at(i) << " ; scaled bit delay = " << SeV_info.bit_delay.at(id) * scale;
+        formal_out(ss2.str().c_str(), 3);
     }
 
     int vid = SeV_info.SeV_set[min_element(utility.begin(), utility.end()) - utility.begin()];
@@ -309,7 +311,7 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
     bool ifIdle;
     ss >> vehicleId >> ifIdle >> position.x >> position.y >> position.z >> speed.x >> speed.y >> speed.z;
     bool ifAvailable = (position.z < 10 && curPosition.distance(position) < Crange && curSpeed.distance(speed) < speed_limit)
-                                    || ((position.z >= 10 || curPosition.z > 10) && curSpeed.distance(speed) < ug_speed_limit);
+                                            || ((position.z >= 10 || curPosition.z > 10) && curSpeed.distance(speed) < ug_speed_limit);
     if(SeV_info.if_exist(vehicleId) && ifAvailable)
         SeV_info.last_time.at(vehicleId) = simTime().dbl();  
     else if(!SeV_info.if_exist(vehicleId) && ifAvailable)
@@ -331,8 +333,8 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     ss1 << "My sumo ID: " << external_id <<"; position: "<< curPosition;
     formal_out(ss1.str().c_str(), 2);
 
-    double x_t = 6e5;   // only for test
-    //    double x_t = uniform(x_av - dx, x_av + dx, myId % num_rng);
+    //    double x_t = 6e5;   // only for test
+    double x_t = uniform(x_av - dx, x_av + dx, myId % num_rng);
     task myTask = {x_t, x_t * alpha0, w0, simTime().dbl()};
     WaveShortMessage* tsk = new WaveShortMessage();         // schedule next task 
     populateWSM(tsk);
@@ -542,8 +544,11 @@ void TaskOffload::initialize(int stage)
 
         //        node_type = myId/6 % 2 == 0? TaV:SeV;
         delay_limit = par("delay_limit").doubleValue();
+        x_low = par("x_low").doubleValue();
+        x_high = par("x_high").doubleValue();
         long i = par("cur_ucb").longValue();
-        cur_ucb = !i ? ucb : (i == 1 ? vucb : (i == 2? avucb : rdm));
+        cur_ucb = !i ? ucb : (i == 1 ? vucb : (i == 2? avucb : (i == 3? aucb : rdm)));
+        ifDataAv = cur_ucb == avucb || cur_ucb == aucb;
         file_name = "offlog_" + to_string(i) + "_sumoid_" + external_id + "_myId_" + to_string(myId) + "_"+ to_string(time(NULL));  // choose among ucb and TaV
         current_task_time = 0;
         x_av = 6e5;                                              // for x_t,
