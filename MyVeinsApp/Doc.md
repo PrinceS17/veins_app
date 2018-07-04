@@ -65,17 +65,57 @@
   2. lust_veins_cfg.sh：linux脚本，用于将LuST子场景的sumo文件加入Veins并进行配置。
 
 新实现代码在Veins目录中位置：
-  MyVeinsApp/1~5: veins/src/veins/modules/application/traci
-  UAV.ned: veins/src/veins/nodes/
-  UAV_scenario.ned, \*.ini：veins/examples/veins/
-  Mobility/\*: veins/src/modules/mobility
-  lust_script: 任意路径皆可
+  * MyVeinsApp/1~5: veins/src/veins/modules/application/traci
+  * UAV.ned: veins/src/veins/nodes/
+  * UAV_scenario.ned, \*.ini: veins/examples/veins/
+  * Mobility/\*: veins/src/modules/mobility
+  * lust_script: 任意路径皆可
   
 ### 实现细节
+本节将具体介绍配置文件、sumo、Veins应用层及UAV模块相关的实现细节。
+
 #### omnetpp.ini 配置细节
+
 * 交通流、网络联合仿真
+
+Veins仿真通过omnetpp.ini来设置整个仿真的重要参数，其中较重要的有：
+```
+sim-time-limit = 400s               # 仿真总时间
+*.node[*].appl.delay_limit = 0.6    # 任务deadline
+*.node[*].appl.m = 20               # replica中[0, 1]量化区间数
+*.node[*].appl.x_low = 0.24         # single中x-
+*.node[*].appl.x_high = 0.24        # single中x+
+*.node[*].appl.cur_ucb = 2          # 单次运行时single中算法类型，(01234) = (ucb vucb avucb aucb random)
+*.node[*].appl.K = 2                # 单此运行时replica中的任务复制数
+
+*.manager.launchConfig = xmldoc("G6_badaling.launchd.xml")    # sumo的工程配置文件
+
+*.node[*].applType = "TaskOffload"  # 节点搭载的应用
+```
+其中，G6_badaling.launchd.xml中指定了所使用的sumo工程文件，余下参数则与Veins仿真有关。
+
 * 参数扫描
-  （如何设置参数，如何运行）
+
+Veins中可以对程序中的参数进行扫描，亦即逐次运行参数取不同值时的程序。以single算法类型cur_ucb为例，需进行如下设置：
+  * 在模块定义TaskOffload.ned中定义该参数
+  ```int cur_ucb = default(0);    # 若*.ini不指定，则默认取0```
+  * 在omnetpp.ini中定义重复次数、随机种子和扫描范围
+  ```
+  repeat = 1                                  # 每个参数只运行一次
+  seed-set = ${repetition}                    # 种子为重复数，这里每次的 repetition = 0，从而使得其具有可重复性
+  *.node[*].appl.cur_ucb = ${n = 0..4 step1}  # cur_ucb取0、1、2、3、4，分别为UCB、VUCB、AVUCB、AUCB、Random
+  ```
+  * 在源文件TaskOffload.cc中获取omnetpp.ini的设置值，以在应用代码中使用
+  ```long i = par("cur_ucb").longValue();```
+
+需要注意的是，如果使用参数扫描设置，则需要注释对应的单次运行设置，如
+```*.node[*].appl_cur_ucb = 2```
+
+同时，扫描参数需要对应相应的应用。比如如果设置任务复制数K，则需要使用ReplicaTask作为任务卸载应用，否则设置无效。
+
+* 运行设置
+
+打开Veins的Run Configurations，可以选择要运行的仿真、用户界面等。选择Qt界面，可进行网络行为的可视化，便于阅读日志和直观感受任务卸载过程；选择cmd界面，将直接在命令行运行，便于快速运行和扫描参数。具体运行模式与相关设置参见<https://www.omnetpp.org/documentation>中User Guide的相关部分。运行时，注意不要勾选多进程，选择单CPU串行，以保证参数不同值时场景设定相同。
 
 #### SUMO 交通流设置
 * G6 高速参数设置
