@@ -15,7 +15,35 @@
 #### 仿真功能介绍
 空天地一体化车联网中包含空、天、地三方节点，如地面的车辆、空中的UAV（无人机）和天空的卫星。各个节点之间通过无线通信，实现网络功能。本平台实现了可搭载于RSU、车辆和无人机的基于学习的任务卸载应用，也就是说，一个节点将自身产生的计算任务卸载给其他节点，以减小自身计算开销、降低任务计算延时等。结合G6高速公路的地图，平台可进行不同任务卸载算法的仿真。其次，本平台实现了UAV的移动性模型和信道模型，满足了UAV仿真的需要。另外，平台也试图加入LuST场景，以测试算法在城市场景下的性能，但目前仅实现了对LuST原始地图进行剪裁处理的脚本，尚未对应用代码进行完整测试。
 
-#### Veins的整体代码架构
+#### Veins工程架构
+由于需要联合sumo和OMNeT++进行实时仿真，Veins工程的结构比较复杂，试列举如下（其中\*为通配符）
+- veins/
+  - examples/
+    - veins/
+      - result/
+        - \*.vec, \*.sca：仿真结果的标量或向量
+      - \*.xml, \*.sumocfg：sumo工程文件
+      - \*.ini：工程配置文件，如omnetpp.ini
+      - \*Scenario.ned：总场景定义
+      - config*.xml：物理层配置文件，选择信道、阴影等模型参数
+      - ...
+  - src/
+    - veins/
+      - base/：Veins各模块的基本定义，无需改动
+      - modules/
+        - analogueModel/
+          - AGChannelModel.cc/.h, \*.cc/.h：各种信道模型，新实现含空地信道的信道模型
+        - application/
+          - ieee80211p/：基本应用层定义
+          - traci/
+            - TaskOffload.cc/.h/.ned, ReplicaTask.cc/.h/.ned, \*.cc/.h/.ned：应用层
+        - mobility/
+          - traci/：TraCI通信所定义的车辆移动性
+          - CircleMobility.cc/.h/.ned, LinearMobility.cc/.h/.ned, WayPointMobility.cc/.h/.ned：Veins中移动性模型
+        - ... (其他文件夹，无需改动)
+      - nodes/
+        - \*.ned：各类节点定义，新实现UAV.ned
+        
 
 #### 代码清单
 本平台在Veins基础上添加应用层、信道模型、移动性模型以及整体配置，新实现的代码列举如下（应用层.cc, .h, .ned分别为实现段、声明段、模块定义段，不再分开列举）：
@@ -35,6 +63,13 @@
 * lust_script
   1. lust_cut.sh：linux脚本，用于剪裁并生成较小的适合Veins仿真的LuST子场景；
   2. lust_veins_cfg.sh：linux脚本，用于将LuST子场景的sumo文件加入Veins并进行配置。
+
+新实现代码在Veins目录中位置：
+  MyVeinsApp/1~5: veins/src/veins/modules/application/traci
+  UAV.ned: veins/src/veins/nodes/
+  UAV_scenario.ned, \*.ini：veins/examples/veins/
+  Mobility/\*: veins/src/modules/mobility
+  lust_script: 任意路径皆可
   
 ### 实现细节
 #### omnetpp.ini 配置细节
