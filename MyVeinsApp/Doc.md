@@ -20,21 +20,21 @@
 #### 代码清单
 本平台在Veins基础上添加应用层、信道模型、移动性模型以及整体配置，新实现的代码列举如下（应用层.cc, .h, .ned分别为实现段、声明段、模块定义段，不再分开列举）：
 * MyVeinsApp/
-  1. TaskOffload.cc/.h/.ned：single offloading的架构和算法，经测成熟；
-  2. ReplicaTask.cc/.h/.ned：
-  3. MyVeinsApp.cc/.h/.ned
-  4. AppOfHandler.cc/.h/.ned
-  5. ToolFunction.cc/.h
-  6. UAV.ned
-  7. UAV_scenario.ned
-  8. omnetpp.ini
-  9. test_uav.ini
+  1. TaskOffload.cc/.h/.ned：single offloading的架构和算法（UCB、VUCB、AVUCB、AUCB、Random），经测成熟；
+  2. ReplicaTask.cc/.h/.ned：replica offloading的架构和算法（LTRA），经测相对成熟，但多TaV场景下尚不完善；
+  3. MyVeinsApp.cc/.h/.ned：AVE架构原始版本，未测试完成；
+  4. AppOfHandler.cc/.h/.ned：AVE架构，相较MyVeinsApp使用msg-Handler架构，未测试完成；
+  5. ToolFunction.cc/.h：应用层统一用到的部分工具函数；
+  6. UAV.ned：UAV模块定义；
+  7. UAV_scenario.ned：含UAV的场景模块定义；
+  8. omnetpp.ini：G6地面车联网配置文件；
+  9. test_uav.ini：含UAV的空地车联网配置文件；
 * Mobility/
-  1. CircleMobility.cc/.h/.ned
-  2. WayPointMobility.cc/.h/.ned
+  1. CircleMobility.cc/.h/.ned：圆周运动；
+  2. WayPointMobility.cc/.h/.ned：多端点的直线运动；
 * lust_script
-  1. lust_cut.sh
-  2. lust_veins_cfg.sh
+  1. lust_cut.sh：linux脚本，用于剪裁并生成较小的适合Veins仿真的LuST子场景；
+  2. lust_veins_cfg.sh：linux脚本，用于将LuST子场景的sumo文件加入Veins并进行配置。
   
 ### 实现细节
 #### omnetpp.ini 配置细节
