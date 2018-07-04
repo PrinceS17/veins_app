@@ -124,13 +124,59 @@ Veins中可以对程序中的参数进行扫描，亦即逐次运行参数取不
 #### 应用层实现
 * 基本抽象
   wsm，send，schedule 等等；
+  
 * TaskOffload: Single Offloading 
-  * 函数功能、实现
-  * SeV_info 的数据结构
-  * 状态机
+
+Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beacon以获取SeV的移动性信息，每秒生成并依据调度算法选择一辆SeV卸载计算任务，接收SeV传回的数据并更新延时等结果；SeV每秒发送beacon，接收TaV传来的计算任务概要和数据，进行处理，结束时传回结果。具体函数介绍如下。
+
+  - 流程函数
+    - initialize()：初始化，定义和接收参数，并根据TaV/SeV类型注册不同的Handler函数，并第一次发送beacon或生成、卸载任务；
+    - onWSM()：收到WaveShortMessage，此时根据msg-Handler表调用对应Handler函数；
+    - onBSM()/onWSA()：DSRC中收到BasicSafetyMessage,WaveServiceAdvertisment时的处理函数，本应用中不使用；
+    - handleSelfMsg()：收到Self Message，此时同样查表调用Handler。
+  - Handler函数
+    - handleTraffic()
+    
+    仅用于TaV应用：
+    
+    - handleBeacon()
+    - handleOffload()
+    - updateResult()
+    
+    仅用于SeV应用：
+    
+    - sendBeacon()
+    - processBrief()
+    - processTask()
+    - sendResult()
+    - sendDup()
+    
+  
+  - SeV_info 的数据结构
+  - 状态机
  
 * ReplicaTask: Replica Offloading
-  * 函数功能、实现
+  - 流程函数
+  ReplicaTask流程函数同前。
+  
+  - Handler函数
+    - handleTraffic()
+    
+    仅用于TaV应用
+    
+    - handleBeacon()
+    - handleOffload()
+    - sendDataDup()
+    - updateResult()
+    
+    仅用于SeV应用
+    
+    - sendBeacon()
+    - processBrief()
+    - processTask()
+    - sendResult()
+    - sendDup()
+    
   * SeV_info 的数据结构
   * 状态机
 
