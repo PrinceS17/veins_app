@@ -126,9 +126,28 @@ Veins中可以对程序中的参数进行扫描，亦即逐次运行参数取不
 * LuST 场景生成（linux script实现）
 
 #### 应用层实现
-- 基本抽象
-  wsm，send，schedule 等等；
-  
+* 基本实现机制
+
+由于OMNeT++的消息触发性质，我们使用msg-Handler对，以统一收到消息时各个处理函数的调用过程。具体msg-Handler对应表如下：
+SeV:
+```
+            Handler[selfB] = &TaskOffload::sendBeacon;
+            Handler[onD] = &TaskOffload::processTask;
+            Handler[onJ] = &TaskOffload::processBrief;
+            Handler[selfR] = &TaskOffload::sendResult;
+            Handler[selfDup] = &TaskOffload::sendDup; 
+```
+TaV:
+```
+            Handler[selfG] = &TaskOffload::handleOffload;
+            Handler[onB] = &TaskOffload::handleBeacon;
+            Handler[onD] = &TaskOffload::updateResult;
+```
+对于Replica情形，TaV增加发送数据的msg-Handler对：
+```
+            Handler[selfD] = &ReplicaTask::sendDataDup;
+```
+
 * TaskOffload: Single Offloading 
 
 Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beacon以获取SeV的移动性信息，每秒生成并依据调度算法选择一辆SeV卸载计算任务，接收SeV传回的数据并更新延时等结果；SeV每秒发送beacon，接收TaV传来的计算任务概要和数据，进行处理，结束时传回结果。
@@ -143,11 +162,11 @@ map<int, int> bp_list;            // 节点状态记录表，在每个Handler操
 
 具体函数介绍如下。
 
-  * 流程函数
-    * initialize()：初始化，定义和接收参数，并根据TaV/SeV类型注册不同的Handler函数，并第一次发送beacon或生成、卸载任务；
-    * onWSM()：收到WaveShortMessage，此时根据msg-Handler表调用对应Handler函数；
-    * onBSM()/onWSA()：DSRC中收到BasicSafetyMessage,WaveServiceAdvertisment时的处理函数，本应用中不使用；
-    * handleSelfMsg()：收到Self Message，此时同样查表调用Handler。
+  - 流程函数
+    - initialize()：初始化，定义和接收参数，并根据TaV/SeV类型注册不同的Handler函数，并第一次发送beacon或生成、卸载任务；
+    - onWSM()：收到WaveShortMessage，此时根据msg-Handler表调用对应Handler函数；
+    - onBSM()/onWSA()：DSRC中收到BasicSafetyMessage,WaveServiceAdvertisment时的处理函数，本应用中不使用；
+    - handleSelfMsg()：收到Self Message，此时同样查表调用Handler。
   
   - Handler函数
     - handleTraffic()：发送交通信息（Veins原有操作）；
@@ -171,15 +190,22 @@ map<int, int> bp_list;            // 节点状态记录表，在每个Handler操
     
     仅用于SeV应用：
     
-    - sendBeacon()：
-    - processBrief()
-    - processTask()
-    - sendResult()
-    - sendDup()
-    
-  
-  - SeV_info 的数据结构
+    - sendBeacon()：以1s为周期发送beacon，发送自消息selfDup以调度sendDup()发送自己的空闲情况、位置、速度；
+    - processBrief()：收到任务概要brief后，存储相关信息至work_info\[id\]；
+    - processTask()：接收数据包，在收到最后一个包时，调出对应任务信息，进行处理，在处理结束时刻发送自消息调用sendResult()；
+    - sendResult()：发送结果至对应TaV；
+    - sendDup()：发送beacon；
+
   - 状态机
+    - 任务卸载与执行的过程可以抽象为Mealy机，即下一个状态由输入消息和当前状态决定。由于不同状态实际上对应不同消息，我们可以用消息类型来标识当前状态。例如，onD代表收到数据的状态，若TaV在此状态下，将查表调用updateResult()更新结果，并等待selfG消息。因此，以消息类型表示的状态转移过程如下：
+      - TaV转移过程：0/selfG -> onD -> selfG -> ...
+      - SeV转移过程：0/selfR -> onJ -> onD -> selfR -> ...
+ 
+    - 由于无线信道的复杂性，不同节点间的干扰较多，我们根据以上状态转移过程，使用bp_list记录卸载对端的当前消息类型。例如，对于SeV而言，在processBrief()末尾，会将对应TaV的当前消息类型值改为onJ。在调用各个handler时，如果必要，应用将调用on_data_check()，通过以下代码，
+      ```
+      if(wsm->getKind() != nextKind(curKind))
+      ```
+      检查消息类型是否为应收到的消息类型。例如，若curKind为onJ，则其nextKind()将返回onD，意味着此时该SeV关于这个TaV只能收到数据包消息。
  
 - ReplicaTask: Replica Offloading
   - 流程函数
