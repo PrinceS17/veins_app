@@ -7,6 +7,10 @@
 
 <http://github.com>
 
+1<sub>down</sub>
+  
+2<sup>up</sup>
+
 ## 空天地一体化车联网仿真平台开发文档
 
 ### 简介
@@ -97,15 +101,15 @@ sim-time-limit = 400s               # 仿真总时间
 * 参数扫描
 
 Veins中可以对程序中的参数进行扫描，亦即逐次运行参数取不同值时的程序。以single算法类型cur_ucb为例，需进行如下设置：
-  * 在模块定义TaskOffload.ned中定义该参数
+  1. 在模块定义TaskOffload.ned中定义该参数
   ```int cur_ucb = default(0);    # 若*.ini不指定，则默认取0```
-  * 在omnetpp.ini中定义重复次数、随机种子和扫描范围
+  2. 在omnetpp.ini中定义重复次数、随机种子和扫描范围
   ```
   repeat = 1                                  # 每个参数只运行一次
   seed-set = ${repetition}                    # 种子为重复数，这里每次的 repetition = 0，从而使得其具有可重复性
   *.node[*].appl.cur_ucb = ${n = 0..4 step1}  # cur_ucb取0、1、2、3、4，分别为UCB、VUCB、AVUCB、AUCB、Random
   ```
-  * 在源文件TaskOffload.cc中获取omnetpp.ini的设置值，以在应用代码中使用
+  3. 在源文件TaskOffload.cc中获取omnetpp.ini的设置值，以在应用代码中使用
   ```long i = par("cur_ucb").longValue();```
 
 需要注意的是，如果使用参数扫描设置，则需要注释对应的单次运行设置，如
@@ -127,7 +131,17 @@ Veins中可以对程序中的参数进行扫描，亦即逐次运行参数取不
   
 * TaskOffload: Single Offloading 
 
-Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beacon以获取SeV的移动性信息，每秒生成并依据调度算法选择一辆SeV卸载计算任务，接收SeV传回的数据并更新延时等结果；SeV每秒发送beacon，接收TaV传来的计算任务概要和数据，进行处理，结束时传回结果。具体函数介绍如下。
+Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beacon以获取SeV的移动性信息，每秒生成并依据调度算法选择一辆SeV卸载计算任务，接收SeV传回的数据并更新延时等结果；SeV每秒发送beacon，接收TaV传来的计算任务概要和数据，进行处理，结束时传回结果。
+
+节点主要维护的数据结构如下：
+```
+SeV_class SeV_info;               // TaV中存储的SeV信息，包括ID、（比特）延时bit_delay、次数count、出现时间occur_time、更新时间last_time
+map<int, task> work_info;         // <ID, task>, 节点生成（TaV）或收到（SeV）的未完成任务信息，收到结果（TaV）或处理结束（SeV）时清除
+map<int, int> bp_list;            // 节点状态记录表，在每个Handler操作之后赋值，用以指示该节点接下来应收到的wsm类型
+```
+
+
+具体函数介绍如下。
 
   * 流程函数
     * initialize()：初始化，定义和接收参数，并根据TaV/SeV类型注册不同的Handler函数，并第一次发送beacon或生成、卸载任务；
@@ -136,17 +150,28 @@ Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beac
     * handleSelfMsg()：收到Self Message，此时同样查表调用Handler。
   
   - Handler函数
-    - handleTraffic()
+    - handleTraffic()：发送交通信息（Veins原有操作）；
     
     仅用于TaV应用：
     
-    - handleBeacon()
-    - handleOffload()
-    - updateResult()
+    - handleBeacon()：从Beacon中读取SeV ID、空闲情况、位置、速度，判断可用性并进行存储或更新等操作；
+      - 可用性：对于车辆（以高度小于10m判决）而言，若SeV与本TaV距离小于最远通信距离，且速度差小于阈值，则认为该SeV可用；对于UAV而言，只需速度差满足条件即认为可用；
+      - 若该SeV可用且不在SeV_info表中，则在表中增加其信息，若在表中，则只更新最新时间；若该SeV不可用，则打印信息，若其在表中，则清除表中已有信息；
+      
+    - handleOffload()：以1s为周期生成任务，调度合适的SeV，并发送数据进行任务卸载；
+      - 根据均值和极差按均匀分布生成任务数据量，并设定结果数据量、运算强度、时间等参数，
+      ```
+      double x_t = uniform(x_av - dx, x_av + dx, myId % num_rng);   // 输入数据量
+      task myTask = {x_t, x_t * alpha0, w0, simTime().dbl()};       // 各任务参数
+      ```
+      - 调度SeV流程：若SeV表为空或表中所有SeV均忙碌，则在本地处理；否则，在表中可用SeV集合中进行选择，若存在从未连接的SeV，则直接调度它，反之，调用scheduling()计算效用函数，选择其中值最低的SeV进行调度。确定SeV ID后，发送任务数据，并更新相关数据结构；
+      - 调度算法：考虑数据量上界x<sup>+</sup>和下界x<sub>-</sub>，根据不同的调度算法，计算不同的utility函数，具体参见基于学习的任务卸载算法<sup>[1]</sup>
+      
+    - updateResult()：收到SeV传回的结果后，更新SeV_info中的延时、次数等数据，并记录仿真的任务完成率reliability和延时job_delay；
     
     仅用于SeV应用：
     
-    - sendBeacon()
+    - sendBeacon()：
     - processBrief()
     - processTask()
     - sendResult()
