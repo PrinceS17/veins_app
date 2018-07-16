@@ -126,7 +126,7 @@ Veins中可以对程序中的参数进行扫描，亦即逐次运行参数取不
 * LuST 场景生成（linux script实现）
 
 #### 应用层实现
-* 基本实现机制
+##### 基本实现机制
 
 由于OMNeT++的消息触发性质，我们使用msg-Handler对，以统一收到消息时各个处理函数的调用过程。具体msg-Handler对应表如下：
 SeV:
@@ -148,20 +148,31 @@ TaV:
             Handler[selfD] = &ReplicaTask::sendDataDup;
 ```
 
-* TaskOffload: Single Offloading 
+另外，应用中对任务统一抽象为struct task如下：
+```
+struct task
+{
+    double data_size;       // 任务数据量
+    double result_size;     // 结果数据量
+    double cycle_per_bit;   // 运算强度：计算该任务1bit所需的CPU周期数
+    double start;           // 产生时间
+    double delay;           // 任务延时
+};
+```
+
+##### TaskOffload: Single Offloading 
 
 Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beacon以获取SeV的移动性信息，每秒生成并依据调度算法选择一辆SeV卸载计算任务，接收SeV传回的数据并更新延时等结果；SeV每秒发送beacon，接收TaV传来的计算任务概要和数据，进行处理，结束时传回结果。
 
-节点主要维护的数据结构如下：
-```
-SeV_class SeV_info;               // TaV中存储的SeV信息，包括ID、（比特）延时bit_delay、次数count、出现时间occur_time、更新时间last_time
-map<int, task> work_info;         // <ID, task>, 节点生成（TaV）或收到（SeV）的未完成任务信息，收到结果（TaV）或处理结束（SeV）时清除
-map<int, int> bp_list;            // 节点状态记录表，在每个Handler操作之后赋值，用以指示该节点接下来应收到的wsm类型
-```
-
-
-具体函数介绍如下。
-
+  - 重要数据结构
+  
+  节点主要维护的数据结构如下：
+  ```
+  SeV_class SeV_info;               // TaV中存储的SeV信息，包括ID、（比特）延时bit_delay、次数count、出现时间occur_time、更新时间last_time
+  map<int, task> work_info;         // <ID, task>, 节点生成（TaV）或收到（SeV）的未完成任务信息，收到结果（TaV）或处理结束（SeV）时清除
+  map<int, int> bp_list;            // 节点状态记录表，在每个Handler操作之后赋值，用以指示该节点接下来应收到的wsm类型   
+  ```
+  
   - 流程函数
     - initialize()：初始化，定义和接收参数，并根据TaV/SeV类型注册不同的Handler函数，并第一次发送beacon或生成、卸载任务；
     - onWSM()：收到WaveShortMessage，此时根据msg-Handler表调用对应Handler函数；
@@ -207,30 +218,51 @@ map<int, int> bp_list;            // 节点状态记录表，在每个Handler操
       ```
       检查消息类型是否为应收到的消息类型。例如，若curKind为onJ，则其nextKind()将返回onD，意味着此时该SeV关于这个TaV只能收到数据包消息。
  
-- ReplicaTask: Replica Offloading
-  - 流程函数
+##### ReplicaTask: Replica Offloadin
+ReplicaTask应用实现基于学习的任务复制卸载<sub>[2]</sub>。与TaskOffload不同的是，Replica情形下，TaV将任务复制多份，同时卸载至多辆SeV进行处理，并接收多份返回结果。最快的返回结果用于计算延时，其他结果的延时用于更新SeV的延时分布，从而提高学习速度。
+
+  - 重要数据结构
+  ReplicaTask中的重要数据结构如下。
+  ```
+  SeV_class SeV_info;
+  map<Pid, task> work_info;
+  map<Pid, int> bp_list;
+  ```
   
-  ReplicaTask流程函数同前。
+  注意此时虽然这三种数据结构意义不变，但实现和使用机制与TaskOffload不尽相同。在Replica情形下，我们定义Pid为车辆ID与任务时间的组合，以唯一标识每一个任务。
+  ```
+class Pid
+{
+public:
+    int id;
+    double time;
+
+public:
+    Pid(int id = 0, double time = 0) {this->id = id; this -> time = time;}
+    Pid(stringstream& ss) { ss >> id >> time; }
+    void write(stringstream& ss) { ss << id <<' '<< time <<' '; }
+    Pid transform(int vid) { return Pid(vid, time); }
+    bool operator < (const Pid& pid)const { return (time < pid.time || (time == pid.time && id < pid.id)); }     // use time as the comparable basis
+    bool operator == (const Pid& pid) const { return (time == pid.time && id == pid.id); }  // for find?
+};
+  ```
+  
+  因此，work\_info和bp\_list的键都变为Pid而不是原来的车辆ID。而SeV_class中将原来维护的单一延时bit\_delay项改为了所有SeV延时的分布
+  ```
+  map<int, vector<double> > F;    // CDF of delay of SeVs
+  ```
+  
+  从而实现对于SeV组合的学习和判断。
   
   - Handler函数
-    - handleTraffic()
+  ReplicaTask同样由Veins自带的空应用MyVeinsApp修改而来，因此其流程控制函数与TaskOffload相同。
+  而Handler函数除了增加了sendDataDup()函数外，与TaskOffload架构相同。函数操作的主要区别在handleOffload()和其调用的调度函数schueduling()。
     
-    仅用于TaV应用
+    - handleOffload(): 
     
-    - handleBeacon()
-    - handleOffload()
-    - sendDataDup()
-    - updateResult()
+    - scheduling():
     
-    仅用于SeV应用
     
-    - sendBeacon()
-    - processBrief()
-    - processTask()
-    - sendResult()
-    - sendDup()
-    
-  - SeV_info 的数据结构
   - 状态机
 
 - AppOfHandler、MyVeinsApp: AVE Framework
@@ -239,3 +271,7 @@ map<int, int> bp_list;            // 节点状态记录表，在每个Handler操
 #### UAV模块实现
 * 移动性
 * 含UAV的信道实现
+
+### 参考文献
+[1]
+[2]
