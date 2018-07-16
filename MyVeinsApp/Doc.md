@@ -218,7 +218,7 @@ Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beac
       ```
       检查消息类型是否为应收到的消息类型。例如，若curKind为onJ，则其nextKind()将返回onD，意味着此时该SeV关于这个TaV只能收到数据包消息。
  
-##### ReplicaTask: Replica Offloadin
+##### ReplicaTask: Replica Offloading
 ReplicaTask应用实现基于学习的任务复制卸载<sub>[2]</sub>。与TaskOffload不同的是，Replica情形下，TaV将任务复制多份，同时卸载至多辆SeV进行处理，并接收多份返回结果。最快的返回结果用于计算延时，其他结果的延时用于更新SeV的延时分布，从而提高学习速度。
 
   - 重要数据结构
@@ -229,7 +229,7 @@ ReplicaTask应用实现基于学习的任务复制卸载<sub>[2]</sub>。与Task
   map<Pid, int> bp_list;
   ```
   
-  注意此时虽然这三种数据结构意义不变，但实现和使用机制与TaskOffload不尽相同。在Replica情形下，我们定义Pid为车辆ID与任务时间的组合，以唯一标识每一个任务。
+  注意此时虽然这三种数据结构意义不变，但实现和使用机制与TaskOffload不尽相同。在Replica情形下，不同于TaskOffload，我们定义Pid为车辆ID与任务时间的组合，以唯一标识每一个任务。
   ```
 class Pid
 {
@@ -247,7 +247,7 @@ public:
 };
   ```
   
-  因此，work\_info和bp\_list的键都变为Pid而不是原来的车辆ID。而SeV_class中将原来维护的单一延时bit\_delay项改为了所有SeV延时的分布
+  因此，work\_info和bp\_list的键都变为Pid而不是原来的车辆ID。另一方面，SeV_class中将原来维护的单一延时bit\_delay项改为了所有SeV延时的分布
   ```
   map<int, vector<double> > F;    // CDF of delay of SeVs
   ```
@@ -258,10 +258,13 @@ public:
   ReplicaTask同样由Veins自带的空应用MyVeinsApp修改而来，因此其流程控制函数与TaskOffload相同。
   而Handler函数除了增加了sendDataDup()函数外，与TaskOffload架构相同。函数操作的主要区别在handleOffload()和其调用的调度函数schueduling()。
     
-    - handleOffload(): 
+    - handleOffload(): 该函数每1s由自消息selfG触发，实现周期性将任务复制卸载至多辆SeV。
+    首先，若服务车为空，则在本地处理；反之，调用scheduling函数，选出学习后认为其最小延时期望最小的K个SeV，调用send_data()函数，将任务数据卸载至选中的多辆SeV上。
     
-    - scheduling():
-    
+    - scheduling()：该函数被handleOffload()调用，在给定的SeV信息情况下，选出K个SeV。具体分为三种情况：
+    1. 集合大小N是否小于应选数量K？如果是，则返回集合中的所有SeV；
+    2. 判断是否存在SeV没有接受过该TaV的卸载，若是，则返回一个含有该SeV的子集；
+    3. 如果1、2都不满足，则先计算分布F<sub>new</sub>，之后调用oracle()，在F<sub>new</sub>基础上，对[0,1]量化后用穷举法计算最小延时期望最小的K元素子集并返回。数学细节不再此处赘述。
     
   - 状态机
 
