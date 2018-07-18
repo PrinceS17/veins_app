@@ -267,8 +267,9 @@ public:
     3. 如果1、2都不满足，则先计算分布F<sub>new</sub>，之后调用oracle()，在F<sub>new</sub>基础上，对[0,1]量化后用穷举法计算最小延时期望最小的K元素子集并返回。数学细节不再此处赘述。
     
   - 状态机
+  在实际系统中，多TaV与多SeV之间的干扰一直是应用实现的一个重要考量。Single Offloading情况下，由于1s内整体任务数较少，SeV的服务资源较为集中，因此整体任务延时大多在1s内，因此同一辆车在同一时间只有一个任务。然而，在Replica Offloading情况下，任务数增多，因此车辆间干扰增多，使得SeV可能同时收到多个任务。在实现中，SeV使用队列进行处理，因此排队靠后的任务延时可能较长。实际测试中，大量任务延时超过1s，从而导致在下1s的时间中，同一辆TaV可能存在多个正在进行的任务，而它们处于不同状态。例如，第一个任务正在被SeV处理，而第二个任务的概要刚被SeV收到。为了区分不同任务的状态，无法继续使用车辆ID来标识状态机，因此定义Pid为车辆ID和产生时间，从而标识不同状态机。具体状态转移仍然同TaskOffload
 
-- AppOfHandler、MyVeinsApp: AVE Framework
+##### AppOfHandler、MyVeinsApp: AVE Framework
 （存在bug，不再维护）
 
 #### UAV模块实现
