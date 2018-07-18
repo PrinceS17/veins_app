@@ -1,16 +1,3 @@
-## Title
-**bold** *Italy*
-* wo No.
-1. with No.
-
-``` cd test/ ```
-
-<http://github.com>
-
-1<sub>down</sub>
-  
-2<sup>up</sup>
-
 ## 空天地一体化车联网仿真平台开发文档
 
 ### 简介
@@ -307,9 +294,11 @@ UAV信道模型采用综合地面车辆间信道和基于LoS和NLoS双路的空�
 ### 参考文献
 
 \[1\] Y. Sun, X. Guo, S. Zhou, Z. Jiang, X. Liu, and Z. Niu, "[Learning-Based Task Offloading for Vehicular Cloud Computing Systems][1]," IEEE ICC’18
+
 [1]: https://arxiv.org/abs/1804.00785
 
 \[2\] Y. Sun, J. Song, S. Zhou, X. Guo, and Z. Niu, "[Task Replication for Vehicular Edge Computing: A Combinatorial Multi-Armed Bandit based Approach][2]," IEEE GlobeCom’18, submitted
+
 [2]: https://arxiv.org/abs/1807.05718
 
 \[3\]  J. Feng, Z. Liu, C. Wu and Y. Ji, "[AVE: Autonomous Vehicular Edge Computing Framework with ACO-Based Scheduling][3]," in IEEE Transactions on Vehicular Technology, vol. 66, no. 12, pp. 10660-10675, Dec. 2017.
@@ -317,5 +306,6 @@ UAV信道模型采用综合地面车辆间信道和基于LoS和NLoS双路的空�
 [3]: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7946184&isnumber=8207705
 
 \[4\] Al-Hourani, Akram, Sithamparanathan Kandeepan, and Abbas Jamalipour. "[Modeling air-to-ground path loss for low altitude platforms in urban environments][4]." Global Communications Conference (GLOBECOM), 2014 IEEE. IEEE, 2014.
+
 [4]: https://ieeexplore.ieee.org/abstract/document/7037248/
 
