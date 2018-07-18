@@ -110,7 +110,22 @@ Veins中可以对程序中的参数进行扫描，亦即逐次运行参数取不
 
 #### SUMO 交通流设置
 * G6 高速参数设置
+
+仿真平台默认使用G6高速公路作为 SUMO交通场景，其中参数在相关SUMO文件中设置。高速公路依次有A、B、C、D四个口，定义路线1为入口A到出口D，路线2为入口A到出口B，路线3为入口A到出口C，路线4为入口B到出口D。车流参数在G6_Badaling.rou.xml中定义，SeV和TaV类似下面代码中定义
+
+```
+<flow id="1" begin="0" end= "200" probability="0.1" type="car2" route="route1" departLane="random" departSpeed="random"/>
+...
+<!-- 	<flow id="0" type="car1" route="route1" begin="45" end="145" number="10" departLane="random" departSpeed="random"/>
+-->
+<vehicle id="0" type="car1" route="route1" depart="45" departLane="random" departSpeed="random"/>
+```
+
+其中，probability表示每秒生成该种类车的概率，通过它可以改变车流密度。另外在目前应用中，id第一位能够被4整除，则定为TaV。类似第一行flow 1，G6_Badaling.rou.xml定义了一些SeV车流。就TaV而言，若需要生成TaV车流，则使用上面代码第2行，注释第3行；若仅需生成单个TaV，则使用第3行，注释第2行。其他参数可以自行在默认代码基础上修改。
+
 * LuST 场景生成（linux script实现）
+
+为了在城区场景下测试任务卸载算法的性能，我们尝试使用LuST场景子区域作为一个地图，进行任务卸载仿真。初始LuST地图过大，对整个区域进行仿真缺乏针对性，同时仿真速度也极慢，因此我们需要对LuST地图进行裁剪，并获得适合Veins的交通配置文件。lust_script中实现了两个简化剪裁操作的linux脚本，第一个引导使用者打开netedit截取出所需要的矩形区域，并生成一个SUMO工程文件夹；第二个引导使用者将这样的SUMO工程文件导入至examples/veins/中，并进行相关配置。
 
 #### 应用层实现
 ##### 基本实现机制
