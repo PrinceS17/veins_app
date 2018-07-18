@@ -222,6 +222,7 @@ Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beac
 ReplicaTask应用实现基于学习的任务复制卸载<sub>[2]</sub>。与TaskOffload不同的是，Replica情形下，TaV将任务复制多份，同时卸载至多辆SeV进行处理，并接收多份返回结果。最快的返回结果用于计算延时，其他结果的延时用于更新SeV的延时分布，从而提高学习速度。
 
   - 重要数据结构
+  
   ReplicaTask中的重要数据结构如下。
   ```
   SeV_class SeV_info;
@@ -255,6 +256,7 @@ public:
   从而实现对于SeV组合的学习和判断。
   
   - Handler函数
+  
   ReplicaTask同样由Veins自带的空应用MyVeinsApp修改而来，因此其流程控制函数与TaskOffload相同。
   而Handler函数除了增加了sendDataDup()函数外，与TaskOffload架构相同。函数操作的主要区别在handleOffload()和其调用的调度函数schueduling()。
     
@@ -267,15 +269,43 @@ public:
     3. 如果1、2都不满足，则先计算分布F<sub>new</sub>，之后调用oracle()，在F<sub>new</sub>基础上，对[0,1]量化后用穷举法计算最小延时期望最小的K元素子集并返回。数学细节不再此处赘述。
     
   - 状态机
-  在实际系统中，多TaV与多SeV之间的干扰一直是应用实现的一个重要考量。Single Offloading情况下，由于1s内整体任务数较少，SeV的服务资源较为集中，因此整体任务延时大多在1s内，因此同一辆车在同一时间只有一个任务。然而，在Replica Offloading情况下，任务数增多，因此车辆间干扰增多，使得SeV可能同时收到多个任务。在实现中，SeV使用队列进行处理，因此排队靠后的任务延时可能较长。实际测试中，大量任务延时超过1s，从而导致在下1s的时间中，同一辆TaV可能存在多个正在进行的任务，而它们处于不同状态。例如，第一个任务正在被SeV处理，而第二个任务的概要刚被SeV收到。为了区分不同任务的状态，无法继续使用车辆ID来标识状态机，因此定义Pid为车辆ID和产生时间，从而标识不同状态机。具体状态转移仍然同TaskOffload
+  
+  在实际系统中，多TaV与多SeV之间的干扰一直是应用实现的一个重要考量。Single Offloading情况下，由于1s内整体任务数较少，SeV的服务资源较为集中，因此整体任务延时大多在1s内，因此同一辆车在同一时间只有一个任务。然而，在Replica Offloading情况下，任务数增多，因此车辆间干扰增多，使得SeV可能同时收到多个任务。在实现中，SeV使用队列进行处理，因此排队靠后的任务延时可能较长。实际测试中，大量任务延时超过1s，从而导致在下1s的时间中，同一辆TaV可能存在多个正在进行的任务，而它们处于不同状态。例如，第一个任务正在被SeV处理，而第二个任务的概要刚被SeV收到。为了区分不同任务的状态，无法继续使用车辆ID来标识状态机，因此定义Pid为车辆ID和产生时间，区分不同任务，从而标识不同状态机。具体状态转移仍然同TaskOffload。
 
 ##### AppOfHandler、MyVeinsApp: AVE Framework
-（存在bug，不再维护）
+AVE架构是一种分布式自治车联网边缘计算架构<sup>[3]</sup>。与基于学习的任务卸载架构不同，AVE架构通过SeV和TaV的直接通信获取服务资源信息，并使用蚁群优化算法进行调度。MyVeinsApp是实现AVE架构的第一版代码，AppOfHandler在其基础上增加了msg-Handler架构，使之更为清晰整洁。目前这两个应用都存在算法原理层面的bug，同时考虑到尝试实现已有算法的目的已经达成，应用代码也不再维护。关于AVE架构及其实现的更多细节，请参见相关说明文档aveReadMe.md。
 
 #### UAV模块实现
+由于SUMO目前仅提供地面车辆的仿真模型，我们只能选择在Veins中增加UAV节点实现。主要增加内容为UAV移动性实现和含有UAV的信道模型实现。需要注意的是，含UAV的空地联合仿真配置文件为test_uav.ini，而不是omnetpp.ini，其中的config.xml也应统一改为config4uav.xml。
+
 * 移动性
+
+我们的平台中，希望实现以直线运动和圆周运动为基本模式的移动性模型，因此分别实现了CircleMobility和WayPointMobility代码，目前默认使用后者作为空地仿真时UAV移动性模型。UAV模块为veins/src/veins/nodes/UAV.ned，仿真时可以在test_uav.ini中修改mobilityType以选择不同的移动性模型。
+
+```
+#*.uav[*].mobilityType = "CircleMobility"
+*.uav[*].mobilityType = "WayPointMobility"
+```
+
+Veins内置的直线运动模型LinearMobility要求输入起始点和速度，之后UAV将在起始点高度沿水平直线飞行；CircleMobility要求输入中心坐标和速度，初始时，UAV计算起始坐标和中心的距离作为半径，并以给定速度进行圆周运动；WayPointMobility则来源于Way-Point移动性模型，要求输入一系列(X, Y)坐标作为航点，并保持初始位置的z坐标不变，UAV以随机速度，沿直线依次向下一个航点移动。目前平台中使用WapPointMobility模型，以三段折线近似模拟G6高速公路的走势。
+
+```
+*.uav[*].mobility.X1 = 700 m
+*.uav[*].mobility.Y1 = 1480 m
+
+*.uav[*].mobility.X2 = 3930 m
+*.uav[*].mobility.Y2 = 1500 m
+
+*.uav[*].mobility.X3 = 5345 m
+*.uav[*].mobility.Y3 = 1166 m
+```
+
 * 含UAV的信道实现
 
+UAV信道模型采用综合地面车辆间信道和基于LoS和NLoS双路的空地随机信道的模型，在src/veins/modules/analogueModel/AGChannelModel中实现，在config4uav.xml中进行了配置。该信道模型首先区分地对地和空对地场景：前者直接使用Veins默认的双路干涉信道模型，后者采用基于两类路径的空地随机信道模型。空地随机信道模型将首先区分场景（城区、郊区等），之后按仿真所得数据，获取此场景下LoS和NLoS两路径的概率，以及各自额外路径损耗的分布参数（高斯分布均值、方差），最后按照这些参数，采样选出本次额外路径损耗值，与自由空间路径损耗相加得到总的路径损耗<sup>[4]</sup>。
+
 ### 参考文献
-[1]
-[2]
+[1]Single
+[2]Replica
+[3]AVE
+[4]UAV 空地信道
