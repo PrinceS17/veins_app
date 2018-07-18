@@ -261,14 +261,20 @@ public:
   
   ReplicaTask同样由Veins自带的空应用MyVeinsApp修改而来，因此其流程控制函数与TaskOffload相同。
   而Handler函数除了增加了sendDataDup()函数外，与TaskOffload架构相同。函数操作的主要区别在handleOffload()和其调用的调度函数schueduling()。
+  
+   1. handleOffload()：该函数每1s由自消息selfG触发，实现周期性将任务复制卸载至多辆SeV。
     
-    - handleOffload(): 该函数每1s由自消息selfG触发，实现周期性将任务复制卸载至多辆SeV。
-    首先，若服务车为空，则在本地处理；反之，调用scheduling函数，选出学习后认为其最小延时期望最小的K个SeV，调用send_data()函数，将任务数据卸载至选中的多辆SeV上。
+      首先，若服务车为空，则在本地处理；
+   
+      反之，调用scheduling函数，选出学习后认为其最小延时期望最小的K个SeV，调用send_data()函数，将任务数据卸载至选中的多辆SeV上。
     
-    - scheduling()：该函数被handleOffload()调用，在给定的SeV信息情况下，选出K个SeV。具体分为三种情况：
-    1. 集合大小N是否小于应选数量K？如果是，则返回集合中的所有SeV；
-    2. 判断是否存在SeV没有接受过该TaV的卸载，若是，则返回一个含有该SeV的子集；
-    3. 如果1、2都不满足，则先计算分布F<sub>new</sub>，之后调用oracle()，在F<sub>new</sub>基础上，对[0,1]量化后用穷举法计算最小延时期望最小的K元素子集并返回。数学细节不再此处赘述。
+   2. scheduling()：该函数被handleOffload()调用，在给定的SeV信息情况下，选出K个SeV。具体分为三种情况：
+    
+      集合大小N是否小于应选数量K？如果是，则返回集合中的所有SeV；
+   
+      判断是否存在SeV没有接受过该TaV的卸载，若是，则返回一个含有该SeV的子集；
+   
+      如果1、2都不满足，则先计算分布F<sub>new</sub>，之后调用oracle()，在F<sub>new</sub>基础上，对\[0,1\]量化后用穷举法计算最小延时期望最小的K元素子集并返回。数学细节不再赘述。
     
   - 状态机
   
