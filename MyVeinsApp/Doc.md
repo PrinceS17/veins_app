@@ -305,7 +305,17 @@ Veins内置的直线运动模型LinearMobility要求输入起始点和速度，�
 UAV信道模型采用综合地面车辆间信道和基于LoS和NLoS双路的空地随机信道的模型，在src/veins/modules/analogueModel/AGChannelModel中实现，在config4uav.xml中进行了配置。该信道模型首先区分地对地和空对地场景：前者直接使用Veins默认的双路干涉信道模型，后者采用基于两类路径的空地随机信道模型。空地随机信道模型将首先区分场景（城区、郊区等），之后按仿真所得数据，获取此场景下LoS和NLoS两路径的概率，以及各自额外路径损耗的分布参数（高斯分布均值、方差），最后按照这些参数，采样选出本次额外路径损耗值，与自由空间路径损耗相加得到总的路径损耗<sup>[4]</sup>。
 
 ### 参考文献
-[1]Single
-[2]Replica
-[3]AVE
-[4]UAV 空地信道
+
+\[1\] Y. Sun, X. Guo, S. Zhou, Z. Jiang, X. Liu, and Z. Niu, "[Learning-Based Task Offloading for Vehicular Cloud Computing Systems][1]," IEEE ICC’18
+[1]: https://arxiv.org/abs/1804.00785
+
+\[2\] Y. Sun, J. Song, S. Zhou, X. Guo, and Z. Niu, "[Task Replication for Vehicular Edge Computing: A Combinatorial Multi-Armed Bandit based Approach][2]," IEEE GlobeCom’18, submitted
+[2]: https://arxiv.org/abs/1807.05718
+
+\[3\]  J. Feng, Z. Liu, C. Wu and Y. Ji, "[AVE: Autonomous Vehicular Edge Computing Framework with ACO-Based Scheduling][3]," in IEEE Transactions on Vehicular Technology, vol. 66, no. 12, pp. 10660-10675, Dec. 2017.
+
+[3]: http://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7946184&isnumber=8207705
+
+\[4\] Al-Hourani, Akram, Sithamparanathan Kandeepan, and Abbas Jamalipour. "[Modeling air-to-ground path loss for low altitude platforms in urban environments][4]." Global Communications Conference (GLOBECOM), 2014 IEEE. IEEE, 2014.
+[4]: https://ieeexplore.ieee.org/abstract/document/7037248/
+
