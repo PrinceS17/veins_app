@@ -221,7 +221,7 @@ Single Offloading所实现的应用分为TaV, SeV两部分。TaV接收SeV的beac
       检查消息类型是否为应收到的消息类型。例如，若curKind为onJ，则其nextKind()将返回onD，意味着此时该SeV关于这个TaV只能收到数据包消息。
  
 ##### ReplicaTask: Replica Offloading
-ReplicaTask应用实现基于学习的任务复制卸载<sub>[2]</sub>。与TaskOffload不同的是，Replica情形下，TaV将任务复制多份，同时卸载至多辆SeV进行处理，并接收多份返回结果。最快的返回结果用于计算延时，其他结果的延时用于更新SeV的延时分布，从而提高学习速度。
+ReplicaTask应用实现基于学习的任务复制卸载<sup>[2]</sup>。与TaskOffload不同的是，Replica情形下，TaV将任务复制多份，同时卸载至多辆SeV进行处理，并接收多份返回结果。最快的返回结果用于计算延时，其他结果的延时用于更新SeV的延时分布，从而提高学习速度。
 
   - 重要数据结构
   
