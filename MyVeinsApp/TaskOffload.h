@@ -184,6 +184,7 @@ protected:
     double dx;                      // x_av - x_min
     double CPU_freq_max;            // [2, 6] GHz
     double CPU_percentage;          // [0.2, 0.5]
+    double delay_av = 0;                // average delay of all tasks
     bool idle_state;
     bool ifDataAv;                  // if cur_ucb == avucb || cur_ucb == aucb
     SeV_class SeV_info;
@@ -202,7 +203,8 @@ protected:
     virtual void onWSA(WaveServiceAdvertisment* wsa);
     virtual void handleSelfMsg(cMessage* msg);
     virtual void handlePositionUpdate(cObject* obj);
-
+//    virtual void refreshDisplay() const;                    // used to display parameters like delay
+    
     // handler for both
     virtual void handleTraffic(WaveShortMessage* wsm);
 

@@ -23,6 +23,7 @@
 #include <time.h>
 #include "ReplicaTask.h"
 using namespace std;
+using namespace Veins;
 
 Define_Module(ReplicaTask);
 
@@ -223,12 +224,12 @@ void ReplicaTask::send_data(task myTask, int rcvId, int serial)
     ss << myTask.data_size <<' '<< myTask.result_size <<' '<< myTask.cycle_per_bit <<' '<<myTask.start;
     WaveShortMessage* pre_data = setWsm(onJ, ss.str(), rcvId, serial);
     // version 1
-//    for(int i:{1,2,3})                            // resend 6 times to ensure the reliability!
-//        sendDown(pre_data->dup());
+    //    for(int i:{1,2,3})                            // resend 6 times to ensure the reliability!
+    //        sendDown(pre_data->dup());
     // version 2
     for(int i:{1,2,3})
         sendDelayedDown(pre_data->dup(), 0.002);
-    
+
     stringstream ss1;
     pid.write(ss1);
     ss1 << myTask.data_size <<' '<< rcvId <<' '<< serial;
@@ -283,7 +284,7 @@ void ReplicaTask::handleBeacon(WaveShortMessage* wsm)
     bool ifAvailable;
     if(position.z < 10 && curPosition.z < 10) ifAvailable = curPosition.distance(position) < Crange && curSpeed.distance(speed) < speed_limit;
     else ifAvailable = curSpeed.distance(speed) < ug_speed_limit;
-    
+
     if(SeV_info.if_exist(vehicleId) && ifAvailable)
         SeV_info.last_time.at(vehicleId) = simTime().dbl();  
     else if(!SeV_info.if_exist(vehicleId) && ifAvailable)
@@ -334,7 +335,7 @@ void ReplicaTask::handleOffload(WaveShortMessage* wsm)
     for(int id:SeV_info.SeV_set) out << id <<" ";
     out << "        ";
     out.close();
-    findHost()->getDisplayString().updateWith("r=20,blue");
+    findHost()->getDisplayString().updateWith("r=10,blue");
     ttime.push_back(st);
     ifFirst[st] = true;
     for(int id:cur_set)
@@ -368,9 +369,9 @@ void ReplicaTask::updateResult(WaveShortMessage* wsm)
         { 
             formal_out("Vehicle doesn't exist in SeV table now!", 1); 
             return;
-            
-            
-            
+
+
+
             //SeV_info.count.at(pid.id);
         }   // use count.at throw error
         if(task_count < 15) scale = calculate_scale(task_vector);
@@ -385,6 +386,16 @@ void ReplicaTask::updateResult(WaveShortMessage* wsm)
             emit(sig, job_delay);
             emit(sig_r, reliability);
             ifFirst.at(pid.time) = false;
+
+            delay_av = (delay_av * (task_vector.size() - 1) + job_delay.dbl()) / task_vector.size();
+            stringstream ss2;           // update the text above
+            //            ss2 << "r=10,blue;t=Last Task Size: " << floor(myTask.data_size / 10) / 100 << "kbit\nLast Delay: "\
+            //                    << floor(job_delay.dbl() * 1e4) / 1e4 << "s\nAverage Delay: "\
+            //                    << floor(delay_av * 1e4) / 1e4 << "s";
+            ss2 << "r=10,blue;t=Last task:\n" << floor(myTask.data_size / 10) /100 << "kbit;tt=Last Delay: "\
+                    << floor(job_delay.dbl() * 1e4) / 1e4 << "s\nAverage Delay: "\
+                    << floor(delay_av * 1e4) / 1e4 << "s";;        
+            findHost()->getDisplayString().updateWith(ss2.str().c_str());
         }
         // 3. output to file and elog
         stringstream ss1;
@@ -421,7 +432,12 @@ void ReplicaTask::processBrief(WaveShortMessage* wsm)
     Pid pid(ss);
     if(!on_data_check(wsm, pid)) return;
     formal_out("process brief...", 2);
-    findHost()->getDisplayString().updateWith("r=20,green");
+
+    stringstream ss2;           // update the text above
+    //    ss2 << "r=10,green;t=CPU Max: " << floor(CPU_freq_max/1e7) / 100 << "GHz\nCPU %: " << CPU_percentage * 100 << "%";
+    ss2 << "r=10,green;t=" << floor(CPU_freq_max/1e7) / 100 << "GHz\n" << CPU_percentage * 100 << "%";
+    findHost()->getDisplayString().updateWith(ss2.str().c_str());
+
     formal_out(ss.str().c_str(), 2);
     formal_out((to_string(simTime().dbl()) + " CPU %: " + to_string(CPU_percentage)).c_str(), 2);
 
@@ -473,7 +489,10 @@ void ReplicaTask::sendResult(WaveShortMessage* wsm)
 
 void ReplicaTask::sendDup(WaveShortMessage* wsm)
 {
-    findHost()->getDisplayString().updateWith("r=12,yellow");
+    stringstream ss2;
+    //    ss2 << "r=10,yellow;t=CPU Max: " << floor(CPU_freq_max/1e7) / 100 << "GHz\nCPU %: " << CPU_percentage * 100 << "%";
+    ss2 << "r=10,yellow;t=" << floor(CPU_freq_max/1e7) / 100 << "GHz\n" << CPU_percentage * 100 << "%";
+    findHost()->getDisplayString().updateWith(ss2.str().c_str());
     wsm->setKind(onB);
     sendDown(wsm->dup());
 }
@@ -489,8 +508,13 @@ void ReplicaTask::initialize(int stage)
         currentSubscribedServiceId = -1;
         if(NULL == mobility) external_id = "40";
         else external_id = mobility->getExternalId();
-        
         node_type = (external_id.c_str()[0] - '0') % 4 == 0? TaV:SeV;
+
+        TraCIScenarioManager* mng = TraCIScenarioManagerAccess().get();     // accumulate the total number of TaV and SeV
+        if(node_type == TaV) mng->numTaV ++;
+        else mng->numSeV ++;
+        formal_out(("\n\nSeV num: " + to_string(mng->numSeV) + "; TaV num: " + to_string(mng->numTaV)).c_str(), 1);
+
         K = par("K").longValue();
         delay_limit = par("delay_limit").doubleValue();
         SeV_info.m = par("m").longValue();
@@ -524,8 +548,8 @@ void ReplicaTask::initialize(int stage)
             Handler[selfD] = &ReplicaTask::sendDataDup;
             Handler[onB] = &ReplicaTask::handleBeacon;
             Handler[onD] = &ReplicaTask::updateResult;
-//            if(external_id.c_str()[0] == '8')        // make the 1st TaV a ghost to keep sumo the same
-                handleOffload(ini);
+            //            if(external_id.c_str()[0] == '8')        // make the 1st TaV a ghost to keep sumo the same
+            handleOffload(ini);
         }
     }
 }

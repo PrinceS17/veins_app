@@ -25,6 +25,8 @@
 #include <time.h>
 #include "TaskOffload.h"        // which includes ToolFunction.h
 using namespace std;
+using namespace Veins;
+
 //
 //#define selfB 2
 //#define selfG 3
@@ -185,8 +187,8 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
     stringstream ss1;
     vector<double> utility;
     double xt1 = x_t / 1e6 < x_low ? 0.0:
-                (x_t / 1e6 > x_high ? 1.0:
-                (x_t / 1e6 - x_low) / (x_high - x_low));   
+            (x_t / 1e6 > x_high ? 1.0:
+                    (x_t / 1e6 - x_low) / (x_high - x_low));   
     ss1 << "scheduling: x_low = " << x_low << "; x_high = " << x_high << "; x_t/1e6 = " << x_t/1e6 << "; xt1 = " << xt1;
     formal_out(ss1.str().c_str(), 2);
     for(int i = 0; i < SeV_info.SeV_set.size(); i ++)
@@ -196,7 +198,7 @@ int TaskOffload::scheduling(double beta, double x_t)           // AVUCB algorith
             utility.push_back(9999);    // avoid choosing the SeV which is processing my last job now
         else
         {
-            
+
             double d_tn = simTime().dbl() - SeV_info.occur_time.at(id);     // for UCB, the occur time is the push back time
             double k = SeV_info.count.at(id);
             if(ifDataAv)
@@ -283,7 +285,7 @@ void TaskOffload::handleTraffic(WaveShortMessage* wsm)
     formal_out("traffic info...", 2);
     if (mobility == NULL) return;               // used for UAV
     const char* wdata = wsm->getWsmData();
-    findHost()->getDisplayString().updateWith("r=16,green");
+//    findHost()->getDisplayString().updateWith("r=16,green");
     if (mobility->getRoadId()[0] != ':') traciVehicle->changeRoute(wdata, 9999);
     if (!sentMessage) {
         sentMessage = true;
@@ -311,7 +313,7 @@ void TaskOffload::handleBeacon(WaveShortMessage* wsm)
     bool ifIdle;
     ss >> vehicleId >> ifIdle >> position.x >> position.y >> position.z >> speed.x >> speed.y >> speed.z;
     bool ifAvailable = (position.z < 10 && curPosition.distance(position) < Crange && curSpeed.distance(speed) < speed_limit)
-                                            || ((position.z >= 10 || curPosition.z > 10) && curSpeed.distance(speed) < ug_speed_limit);
+                                                                            || ((position.z >= 10 || curPosition.z > 10) && curSpeed.distance(speed) < ug_speed_limit);
     if(SeV_info.if_exist(vehicleId) && ifAvailable)
         SeV_info.last_time.at(vehicleId) = simTime().dbl();  
     else if(!SeV_info.if_exist(vehicleId) && ifAvailable)
@@ -329,6 +331,7 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
 {
 
     formal_out("TaV: generate tasks...", 2);
+    
     stringstream ss1;
     ss1 << "My sumo ID: " << external_id <<"; position: "<< curPosition;
     formal_out(ss1.str().c_str(), 2);
@@ -368,9 +371,8 @@ void TaskOffload::handleOffload(WaveShortMessage* wsm)
     out << endl << simTime().dbl() << "s " << rcvId <<"        ";
     for(int id:SeV_info.SeV_set) out << id <<' ';
     out.close();
-
     send_data(myTask, rcvId, 0);
-    findHost()->getDisplayString().updateWith("r=20,blue");
+    
     work_info[rcvId] = myTask;
     task_count ++;
     map<int, int>::iterator ite;
@@ -414,6 +416,14 @@ void TaskOffload::updateResult(WaveShortMessage* wsm)
         //        reliability = (double)SeV_info.total_count / (double)task_count;
         emit(sig, job_delay);           // send record signal
         emit(sig_r, reliability);
+         
+        delay_av = (delay_av * (task_vector.size() - 1) + job_delay.dbl()) / task_vector.size();
+        stringstream ss2;           // update the text above
+        ss2 << "r=20,blue;t=Last Task\n" << floor(myTask.data_size / 10) / 100 << "kbit;tt=TaV " << myId << "\nLast Delay: "\
+                << floor(job_delay.dbl() * 1e4) / 1e4 << "s\nAverage Delay: "\
+                << floor(delay_av * 1e4) / 1e4 << "s";
+        findHost()->getDisplayString().updateWith(ss2.str().c_str());
+
 
         string str = "Got result from " + to_string(vehicleId) + "; delay = " + to_string(job_delay.dbl()) + "; data size = " + to_string(myTask.data_size / 1e6) + "Mbit";
         formal_out(str.c_str(), 1);
@@ -457,7 +467,11 @@ void TaskOffload::processBrief(WaveShortMessage* wsm)
     if(!on_data_check(wsm, vehicleId)) return;
     if(curPosition.z > 10) formal_out("process brief: UAV chosen...", 2);
     else formal_out("process brief...", 2);
-    findHost()->getDisplayString().updateWith("r=20,green");        // show clearly the chosen SeV
+
+    stringstream ss2;           // update the text above
+    ss2 << "r=20,green;t=" << floor(CPU_freq_max/1e7) / 100 << "GHz\n" << CPU_percentage * 100 << "%;tt=SeV " << myId;
+    findHost()->getDisplayString().updateWith(ss2.str().c_str());
+
     formal_out(ss.str().c_str(), 2);
     task myTask;
     ss >> myTask.data_size >> myTask.result_size >> myTask.cycle_per_bit >> myTask.start;
@@ -520,7 +534,9 @@ void TaskOffload::sendResult(WaveShortMessage* wsm)
 void TaskOffload::sendDup(WaveShortMessage* wsm)
 {
     wsm->setKind(onB);          // to send beacon
-    findHost()->getDisplayString().updateWith("r=12,yellow");
+    stringstream ss2;           // update the text above
+    ss2 << "r=20,yellow;t=" << floor(CPU_freq_max/1e7) / 100 << "GHz\n" << CPU_percentage * 100 << "%;tt=SeV " << myId;
+    findHost()->getDisplayString().updateWith(ss2.str().c_str());
 
     sendDown(wsm->dup());
 }
@@ -541,7 +557,13 @@ void TaskOffload::initialize(int stage)
         if(NULL == mobility) external_id = "40";                            // use UAV as TaV
         else external_id = mobility->getExternalId();
         node_type = (external_id.c_str()[0] - '0') % 4 == 0? TaV:SeV;
-
+        
+        TraCIScenarioManager* mng = TraCIScenarioManagerAccess().get();     // accumulate the total number of TaV and SeV
+        if(node_type == TaV) mng->numTaV ++;
+        else mng->numSeV ++;
+        formal_out(("\n\nSeV num: " + to_string(mng->numSeV) + "; TaV num: " + to_string(mng->numTaV)).c_str(), 1);
+        
+        
         //        node_type = myId/6 % 2 == 0? TaV:SeV;
         delay_limit = par("delay_limit").doubleValue();
         x_low = par("x_low").doubleValue();

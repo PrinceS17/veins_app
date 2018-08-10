@@ -172,6 +172,7 @@ protected:
     double dx;
     double CPU_freq_max;        // [2, 6] GHz
     double CPU_percentage;      // [0.2, 0.5]
+    double delay_av = 0;
     bool idle_state;
     SeV_class SeV_info;
     vector<task> task_vector;   // push back all the tasks, same as before
